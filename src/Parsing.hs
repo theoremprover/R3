@@ -12,5 +12,5 @@ parseFile_CLanguage gcc filepath = do
 		Left parseerror   -> return $ Left $ show parseerror
 		Right ctranslunit -> return $ languagecToAST ctranslunit
 
-languagecToAST :: CTranslUnit -> AST
-languagecToAST ctranslunit = return $
+languagecToAST :: CTranslUnit -> TranslationUnit
+languagecToAST ctranslunit = return $ TranslationUnit
