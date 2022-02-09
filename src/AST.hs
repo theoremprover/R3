@@ -3,6 +3,9 @@
 
 module AST where
 
+type AST = TranslUnit ()
+type TypedAST = TranslUnit CType
+
 data Loc = Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } deriving (Eq)
 instance Show Loc where
 	show Loc{..} = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
@@ -11,34 +14,34 @@ data CType =
 	CVoid |
 	CInt Int Bool |
 	CFloat Int |
-	CArray CType (Maybe Int)
+	CArray CType (Maybe Integer)
 	CPtr CType |
 	CEnum [Ident] |
 	CStruct [VarDecl] |
-	CUnion [VarDecl]
+	CUnion [VarDecl] deriving (Show,Eq)
 
-data TranslUnit = TranslUnit [ExtDecl] Location
+data TranslUnit a = TranslUnit [ExtDecl a] Location
 
-data VarDecl = VarDecl Ident CType [Specifier] Loc
+data VarDecl = VarDecl Ident [Specifier] CType Loc
 
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc }
 
 data Specifier = ()
 
-data ExtDecl = ExtDecl VarDecl (Either (Maybe Expr) ([VarDecl],Stmt)) Loc
+data ExtDecl a = ExtDecl VarDecl (Either (Maybe (Expr a)) ([VarDecl],Stmt a)) Loc
 
-data Expr =
-	StmtExpr Stmt Loc |
-	Assign LExpr Expr CType Loc |
-	Cast Expr CType Loc |
-	Call Expr [Expr] CType Loc |
-	Unary UnaryOp Expr CType Loc |
-	Binary BinaryOp Expr Expr CType Loc |
-	CondExpr Expr Expr Expr CType Loc |
-	Index Expr Expr CType Loc |
-	Member LExpr Ident Bool CType Loc |
-	Var Ident CType Loc |
-	Constant Const Loc
+data Expr a =
+	StmtExpr Stmt a Loc |
+	Assign (Expr a) (Expr a) a Loc |
+	Cast (Expr a) a Loc |
+	Call (Expr a) [Expr a] a Loc |
+	Unary UnaryOp (Expr a) a Loc |
+	Binary BinaryOp (Expr a) (Expr a) a Loc |
+	CondExpr (Expr a) (Expr a) (Expr a) a Loc |
+	Index (Expr a) (Expr a) a Loc |
+	Member LExpr Ident Bool a Loc |
+	Var Ident a Loc |
+	Constant (Const a) a Loc
 
 data UnaryOp = AddrOf | DerefOp | Neg | Exor | Not
 data BinaryOp =
@@ -46,17 +49,17 @@ data BinaryOp =
 	Less | Equals | LessEq | Greater | GreaterEq |
 	And | Or | BitAnd | BitOr | BitXOr
 
-data Const =
-	IntConst Integer CType Loc |
-	CharConst Char CType Loc |
-	FloatConst String CType Loc |
-	StringConst String CType Loc
+data Const a =
+	IntConst Integer a Loc |
+	CharConst Char a Loc |
+	FloatConst String a Loc |
+	StringConst String a Loc
 
-data Stmt =
+data Stmt a =
 	Label String Loc |
 	Compound [Statement] Loc |
-	IfThenElse Expr Stmt Stmt Loc |
-	ExprStmt Expr Loc |
-	Loop Expr Stmt Loc |   -- This is a while loop. do-while and for loops are transcribed into this form.
-	Return (Maybe Expr) Loc |
+	IfThenElse (Expr a) Stmt Stmt Loc |
+	ExprStmt (Expr a) Loc |
+	Loop (Expr a) Stmt Loc |   -- This is a while loop. do-while and for loops are transcribed into this form.
+	Return (Maybe (Expr a)) Loc |
 	Goto Ident Loc
