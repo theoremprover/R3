@@ -19,7 +19,6 @@ data CType =
 
 data TranslUnit = TranslUnit [ExtDecl] Location
 
-
 data VarDecl = VarDecl Ident CType [Specifier] Loc
 
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc }
@@ -41,8 +40,11 @@ data Expr =
 	Var Ident CType Loc |
 	Constant Const Loc
 
-data UnaryOp = AddressOf | IndirOp | Neg | Exor | Not
-data BinaryOp = Mul | Div | Add | Sub | Rmd | Shl | Shr | Less | Equal | And | Or | BitAnd | BitOr | BitXOr
+data UnaryOp = AddrOf | DerefOp | Neg | Exor | Not
+data BinaryOp =
+	Mul | Div | Add | Sub | Rmd | Shl | Shr |
+	Less | Equals | LessEq | Greater | GreaterEq |
+	And | Or | BitAnd | BitOr | BitXOr
 
 data Const =
 	IntConst Integer CType Loc |

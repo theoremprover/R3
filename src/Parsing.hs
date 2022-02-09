@@ -1,16 +1,18 @@
 module Parsing (
-	parseFile_CLanguage)
+	parseFile)
 	where
 
 import Language.C
 
 import AST
 
-parseFile_CLanguage :: String -> FilePath -> IO (Either String AST)
-parseFile_CLanguage gcc filepath = do
+parseFile :: String -> FilePath -> IO (Either String AST)
+parseFile gcc filepath = do
 	readFile filepath >>= parseCFile (newGCC gcc) (Just filepath) >>= \case
 		Left parseerror   -> return $ Left $ show parseerror
-		Right ctranslunit -> return $ languagecToAST ctranslunit
+		Right ctranslunit -> return $ Right $ ctranslunit2AST ctranslunit
 
-languagecToAST :: CTranslUnit -> TranslationUnit
-languagecToAST ctranslunit = return $ TranslationUnit
+ctranslunit2AST :: CTranslUnit -> TranslUnit
+ctranslunit2AST (CTranslUnit extdecls _) = TranslUnit $ map extdecl2Decl extdecls
+
+extdecl2Decl
