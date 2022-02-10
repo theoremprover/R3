@@ -8,10 +8,10 @@ module Parsing (
 import Language.C
 import Language.C.System.GCC (newGCC)
 import Language.C.Analysis.AstAnalysis (analyseAST)
-import Language.C.Analysis.TravMonad
+import Language.C.Analysis.TravMonad (runTrav_)
 import Language.C.Data.Node (lengthOfNode)
 import Text.PrettyPrint.HughesPJ (render)
-import Data.Maybe
+import Data.Maybe (fromJust)
 
 import AST
 
