@@ -14,24 +14,26 @@ data CType =
 	CVoid |
 	CInt Int Bool |
 	CFloat Int |
-	CArray CType (Maybe Integer)
+	CArray CType (Maybe Integer) |
 	CPtr CType |
 	CEnum [Ident] |
 	CStruct [VarDecl] |
-	CUnion [VarDecl] deriving (Show,Eq)
+	CUnion [VarDecl] deriving (Show)
 
-data TranslUnit a = TranslUnit [ExtDecl a] Location
+data TranslUnit a = TranslUnit [ExtDecl a] Loc
 
-data VarDecl = VarDecl Ident [Specifier] CType Loc
+data VarDecl = VarDecl Ident [Specifier] CType Loc deriving (Show)
 
-data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc }
+data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show)
+instance Eq Ident where
+	ident1 == ident2 = nameIdent ident1 == nameIdent ident2 && idIdent ident1 == idIdent ident2
 
-data Specifier = ()
+data Specifier = Specifier deriving Show
 
 data ExtDecl a = ExtDecl VarDecl (Either (Maybe (Expr a)) ([VarDecl],Stmt a)) Loc
 
 data Expr a =
-	StmtExpr Stmt a Loc |
+	StmtExpr (Stmt a) a Loc |
 	Assign (Expr a) (Expr a) a Loc |
 	Cast (Expr a) a Loc |
 	Call (Expr a) [Expr a] a Loc |
@@ -39,7 +41,7 @@ data Expr a =
 	Binary BinaryOp (Expr a) (Expr a) a Loc |
 	CondExpr (Expr a) (Expr a) (Expr a) a Loc |
 	Index (Expr a) (Expr a) a Loc |
-	Member LExpr Ident Bool a Loc |
+	Member (Expr a) Ident Bool a Loc |
 	Var Ident a Loc |
 	Constant (Const a) a Loc
 
@@ -57,9 +59,9 @@ data Const a =
 
 data Stmt a =
 	Label String Loc |
-	Compound [Statement] Loc |
-	IfThenElse (Expr a) Stmt Stmt Loc |
+	Compound [Stmt a] Loc |
+	IfThenElse (Expr a) (Stmt a) (Stmt a) Loc |
 	ExprStmt (Expr a) Loc |
-	Loop (Expr a) Stmt Loc |   -- This is a while loop. do-while and for loops are transcribed into this form.
+	Loop (Expr a) (Stmt a) Loc |   -- This is a while loop. do-while and for loops are transcribed into this form.
 	Return (Maybe (Expr a)) Loc |
 	Goto Ident Loc
