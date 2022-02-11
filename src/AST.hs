@@ -17,15 +17,15 @@ data ZType =
 	ZVoid |
 	ZInt Int Bool |
 	ZFloat Int |
-	ZArray CType (Maybe Integer) |
-	ZPtr CType |
+	ZArray ZType (Maybe Integer) |
+	ZPtr ZType |
 	ZEnum [Ident] |
 	ZStruct [VarDecl] |
 	ZUnion [VarDecl] deriving (Show)
 
 type TranslUnit a = Map.Map Ident (ExtDecl a)
 
-data VarDecl = VarDecl Ident [Specifier] CType Loc deriving (Show)
+data VarDecl = VarDecl Ident [Specifier] ZType Loc deriving (Show)
 
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show)
 instance Eq Ident where

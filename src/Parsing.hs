@@ -12,6 +12,7 @@ import Language.C.Analysis.DefTable (DefTable)
 import Language.C.Analysis.DeclAnalysis (analyseTypeDecl)
 import Language.C.Analysis.AstAnalysis (analyseAST)
 import Language.C.Analysis.TravMonad (runTrav_,getDefTable,withDefTable)
+import qualified Language.C.Data.Ident as CIdent
 import Language.C.Data.Node (lengthOfNode,NodeInfo)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn)
 import Text.PrettyPrint.HughesPJ (render)
@@ -36,7 +37,7 @@ parseFile gcc filepath = do
 				return $ Right $ globDecls2AST deftable globaldecls
 
 globDecls2AST :: DefTable -> GlobalDecls -> AST
-globDecls2AST deftable GlobalDecls{..} = Map.map identdecl2extdecl gObjs
+globDecls2AST deftable GlobalDecls{..} = Map.map identdecl2extdecl $ Map.mapKeys cident2ident gObjs
 	where
 	decl2type :: DefTable -> CDecl -> Type
 	decl2type deftable decl = case runTrav_ $ do
@@ -49,9 +50,14 @@ globDecls2AST deftable GlobalDecls{..} = Map.map identdecl2extdecl gObjs
 	ni2Loc :: NodeInfo -> Loc
 	ni2Loc ni = let pos = posOf ni in Loc (posFile pos) (posRow pos) (posColumn pos) (fromJust $ lengthOfNode ni)
 
+	cident2ident :: CIdent.Ident -> Ident
+	cident2ident (CIdent.Ident name i ni) = Ident name i (ni2loc ni)
+
 	identdecl2extdecl :: IdentDecl -> ExtDecl ()
 	identdecl2extdecl (Declaration (Decl (VarDecl _ (DeclAttrs _ _ attrs) ty) ni)) =
-
+	identdecl2extdecl (ObjectDef (ObjDef (VarDecl _ (DeclAttrs _ _ attrs) ty) mb_init ni)) =
+	identdecl2extdecl (FunctionDef (FunDef ((VarDecl _ (DeclAttrs _ _ attrs) ty)) stmt ni)) =
+	identdecl2extdecl (EnumeratorDef (Enumerator ident expr (EnumType sueref enums attrs _) ni)) =
 
 {-
 	where
