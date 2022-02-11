@@ -3,24 +3,27 @@
 
 module AST where
 
+import qualified Data.Map.Strict as Map
+
+
 type AST = TranslUnit ()
-type TypedAST = TranslUnit CType
+type TypedAST = TranslUnit ZType
 
 data Loc = Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } deriving (Eq)
 instance Show Loc where
 	show Loc{..} = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
 
-data CType =
-	CVoid |
-	CInt Int Bool |
-	CFloat Int |
-	CArray CType (Maybe Integer) |
-	CPtr CType |
-	CEnum [Ident] |
-	CStruct [VarDecl] |
-	CUnion [VarDecl] deriving (Show)
+data ZType =
+	ZVoid |
+	ZInt Int Bool |
+	ZFloat Int |
+	ZArray CType (Maybe Integer) |
+	ZPtr CType |
+	ZEnum [Ident] |
+	ZStruct [VarDecl] |
+	ZUnion [VarDecl] deriving (Show)
 
-data TranslUnit a = TranslUnit [ExtDecl a] Loc
+type TranslUnit a = Map.Map Ident (ExtDecl a)
 
 data VarDecl = VarDecl Ident [Specifier] CType Loc deriving (Show)
 

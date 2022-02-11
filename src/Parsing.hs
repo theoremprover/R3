@@ -16,6 +16,7 @@ import Language.C.Data.Node (lengthOfNode,NodeInfo)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn)
 import Text.PrettyPrint.HughesPJ (render)
 import Data.Maybe (fromJust)
+import qualified Data.Map.Strict as Map
 
 import GlobDecls
 import AST
@@ -35,7 +36,7 @@ parseFile gcc filepath = do
 				return $ Right $ globDecls2AST deftable globaldecls
 
 globDecls2AST :: DefTable -> GlobalDecls -> AST
-globDecls2AST deftable globaldecls = error ""
+globDecls2AST deftable GlobalDecls{..} = Map.map identdecl2extdecl gObjs
 	where
 	decl2type :: DefTable -> CDecl -> Type
 	decl2type deftable decl = case runTrav_ $ do
@@ -44,6 +45,14 @@ globDecls2AST deftable globaldecls = error ""
 		of
 		Left errs    -> error $ show errs
 		Right (ty,_) -> ty
+
+	ni2Loc :: NodeInfo -> Loc
+	ni2Loc ni = let pos = posOf ni in Loc (posFile pos) (posRow pos) (posColumn pos) (fromJust $ lengthOfNode ni)
+
+	identdecl2extdecl :: IdentDecl -> ExtDecl ()
+	identdecl2extdecl (Declaration (Decl (VarDecl _ (DeclAttrs _ _ attrs) ty) ni)) =
+
+
 {-
 	where
 	-- taken from Language/C/Analysis/DeclAnalysis.hs, added proper handling of initializers
@@ -63,5 +72,3 @@ globDecls2AST deftable globaldecls = error ""
 		analyseTyDeclr other = error $ "analyseTyDeclr " ++ show other
 -}
 
-ni2Loc :: NodeInfo -> Loc
-ni2Loc ni = let pos = posOf ni in Loc (posFile pos) (posRow pos) (posColumn pos) (fromJust $ lengthOfNode ni)

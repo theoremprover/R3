@@ -24,5 +24,6 @@
     <orderEntry type="library" name="binary-0.8.8.0" level="project" />
     <orderEntry type="library" name="template-haskell-2.16.0.0" level="project" />
     <orderEntry type="library" name="ghc-boot-th-8.10.7" level="project" />
+    <orderEntry type="module" module-name="language-c" />
   </component>
 </module>
