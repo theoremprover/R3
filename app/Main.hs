@@ -10,14 +10,14 @@ import Parsing
 
 main :: IO ()
 main = do
-	-- when there is an error, we'd like to have *all* output till then
+	-- When there is an error, we'd like to have *all* output till then
 	hSetBuffering stdout NoBuffering
 
 	exitval <- parseFile "gcc" "test.c" >>= \case
 		Left errmsg -> do
 			putStrLn errmsg
 			return $ ExitFailure 1
-		Right () -> do
+		Right ast -> do
 			return ExitSuccess
 
 	exitWith exitval

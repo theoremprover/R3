@@ -7,7 +7,7 @@ module Parsing (
 
 import Language.C (parseCFile,CDecl)
 import Language.C.System.GCC (newGCC)
-import Language.C.Analysis.SemRep (Type,GlobalDecls)
+import Language.C.Analysis.SemRep
 import Language.C.Analysis.DefTable (DefTable)
 import Language.C.Analysis.DeclAnalysis (analyseTypeDecl)
 import Language.C.Analysis.AstAnalysis (analyseAST)
@@ -17,12 +17,19 @@ import Language.C.Data.Node (lengthOfNode,NodeInfo)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn)
 import Text.PrettyPrint.HughesPJ (render)
 import Data.Maybe (fromJust)
-import qualified Data.Map.Strict as Map
+
+import qualified Data.Map.Strict as ASTMap
 
 import GlobDecls
 import AST
 
-parseFile :: String -> FilePath -> IO (Either String AST)
+{-
+While translating the Language.C AST to our AST, we also do type inference,
+so we avoid having to define an intermediate format for an untyped R3 AST, which would
+necessarily be different from the typed one (hence could not simply be implemented by a type parameter).
+-}
+
+parseFile :: String -> FilePath -> IO (Either String TranslUnit)
 parseFile gcc filepath = do
 	parseCFile (newGCC gcc) Nothing [] filepath >>= \case
 		Left parseerror   -> return $ Left $ show parseerror
@@ -31,13 +38,13 @@ parseFile gcc filepath = do
 			deftable <- getDefTable
 			return (globaldecls,deftable)
 			of
-			Left errs -> return $ Left $ "ERRORS:\n" ++ unlines (map show errs)
+			Left errs -> return $ Left $ "HARD ERRORS:\n" ++ unlines (map show errs)
 			Right ((globaldecls,deftable),_) -> do
 				writeFile "GlobDecls.html" $ globdeclsToHTMLString globaldecls
 				return $ Right $ globDecls2AST deftable globaldecls
 
-globDecls2AST :: DefTable -> GlobalDecls -> AST
-globDecls2AST deftable GlobalDecls{..} = Map.map identdecl2extdecl $ Map.mapKeys cident2ident gObjs
+globDecls2AST :: DefTable -> GlobalDecls -> TranslUnit
+globDecls2AST deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys cident2ident gObjs
 	where
 	decl2type :: DefTable -> CDecl -> Type
 	decl2type deftable decl = case runTrav_ $ do
@@ -47,34 +54,15 @@ globDecls2AST deftable GlobalDecls{..} = Map.map identdecl2extdecl $ Map.mapKeys
 		Left errs    -> error $ show errs
 		Right (ty,_) -> ty
 
-	ni2Loc :: NodeInfo -> Loc
-	ni2Loc ni = let pos = posOf ni in Loc (posFile pos) (posRow pos) (posColumn pos) (fromJust $ lengthOfNode ni)
+	ni2loc :: NodeInfo -> Loc
+	ni2loc ni = let pos = posOf ni in Loc (posFile pos) (posRow pos) (posColumn pos) (fromJust $ lengthOfNode ni)
 
 	cident2ident :: CIdent.Ident -> Ident
 	cident2ident (CIdent.Ident name i ni) = Ident name i (ni2loc ni)
 
-	identdecl2extdecl :: IdentDecl -> ExtDecl ()
-	identdecl2extdecl (Declaration (Decl (VarDecl _ (DeclAttrs _ _ attrs) ty) ni)) =
-	identdecl2extdecl (ObjectDef (ObjDef (VarDecl _ (DeclAttrs _ _ attrs) ty) mb_init ni)) =
-	identdecl2extdecl (FunctionDef (FunDef ((VarDecl _ (DeclAttrs _ _ attrs) ty)) stmt ni)) =
-	identdecl2extdecl (EnumeratorDef (Enumerator ident expr (EnumType sueref enums attrs _) ni)) =
-
-{-
-	where
-	-- taken from Language/C/Analysis/DeclAnalysis.hs, added proper handling of initializers
-	myAnalyseTypeDecl :: (MonadTrav m) => CDecl → m Type
-	myAnalyseTypeDecl (CDecl declspecs declrs node) = case declrs of
-		[] → analyseTyDeclr (CDeclr Nothing [] Nothing [] node)
-		(Just declr,_,Nothing):_ → analyseTyDeclr declr
-		where
-		analyseTyDeclr (CDeclr _ derived_declrs Nothing attrs _declrnode) = do
-			canonTySpecs <- canonicalTypeSpec typespecs
-			t <- tType True node (map CAttrQual (attrs++attrs_decl) ++ typequals) canonTySpecs derived_declrs []
-			case nameOfNode node of
-				Just n → withDefTable (\dt → (t, insertType dt n t))
-				Nothing → return t
-			where
-			(storagespec, attrs_decl, typequals, typespecs, funspecs, alignspecs) = partitionDeclSpecs declspecs
-		analyseTyDeclr other = error $ "analyseTyDeclr " ++ show other
--}
-
+--data ExtDecl a = ExtDecl VarDecl (Either (Maybe (Expr a)) ([VarDecl],Stmt a)) Loc
+	identdecl2extdecl :: IdentDecl -> ExtDecl
+	identdecl2extdecl (Declaration (Decl (VarDecl _ (DeclAttrs _ _ attrs) ty) ni)) = error "Not yet implemented"
+	identdecl2extdecl (ObjectDef (ObjDef (VarDecl _ (DeclAttrs _ _ attrs) ty) mb_init ni)) = error "Not yet implemented"
+	identdecl2extdecl (FunctionDef (FunDef ((VarDecl _ (DeclAttrs _ _ attrs) ty)) stmt ni)) = error "Not yet implemented"
+	identdecl2extdecl (EnumeratorDef (Enumerator ident expr (EnumType sueref enums attrs _) ni)) = error "Not yet implemented"
