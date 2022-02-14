@@ -27,10 +27,12 @@ data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (
 instance Eq Ident where
 	ident1 == ident2 = nameIdent ident1 == nameIdent ident2 && idIdent ident1 == idIdent ident2
 
--- AST is a list of declarations, each of them being either
--- 1. a variable declaration (maybe with an initializer), or
--- 2. a function declaration together with a definition of the function
-data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) ([VarDeclaration],Stmt)) Loc
+-- AST contains variable declarations, each of them having either
+-- 1. maybe an initializer (i.e. a variable declaration), or
+-- 2. a statement as body of the defined function
+--    (the arguments and their types are in the type of the function identifier)
+
+data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
 
 data Expr =
 	StmtExpr Stmt ZType Loc |
