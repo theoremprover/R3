@@ -16,7 +16,6 @@ import qualified Language.C.Data.Ident as CIdent
 import Language.C.Syntax.AST
 import Language.C.Data.Node (lengthOfNode,NodeInfo)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn)
-import Text.PrettyPrint.HughesPJ (render)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.State.Lazy
 import qualified Data.Map.Strict as ASTMap

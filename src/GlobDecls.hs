@@ -1,27 +1,25 @@
-{-# LANGUAGE PackageImports,OverloadedStrings #-}
+{-# LANGUAGE PackageImports,OverloadedStrings,RankNTypes #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module GlobDecls where
 
-import "language-c" Language.C
-import Language.C.Data.Ident
-import Language.C.Analysis.AstAnalysis
---import Language.C.Analysis.TravMonad
 import Language.C.Analysis.SemRep
 import Text.Blaze.Html4.Strict as H
 import Text.Blaze.Html.Renderer.String
 import Control.Monad
 import Data.Map.Strict as Map
-import Text.PrettyPrint
+
+--import Prettyptrinter
+--import Prettyprinter.Render.Text
 
 import AST
 
-
-showMapTable showval mapping = table $
+showMapTable :: (Show k, Show v) => Map.Map k v -> Html
+showMapTable mapping = table $
 	forM_ (assocs mapping) $ \ (key,val) -> tr $ do
-		td $ toHtml $ (render.pretty) key
+		td $ toHtml $ show key
 		td $ preEscapedToHtml ("&#x21a6;"::String)
-		td $ toHtml $ showval val
+		td $ toHtml $ show val
 
 globdeclsToHTMLString :: GlobalDecls -> String
 globdeclsToHTMLString (GlobalDecls objs tags typedefs) = renderHtml $ docTypeHtml $ do
@@ -30,16 +28,16 @@ globdeclsToHTMLString (GlobalDecls objs tags typedefs) = renderHtml $ docTypeHtm
 	body $ do
 		h1 "GlobalDecls"
 		h2 "Defs/Decls"
-		showMapTable (render.pretty) objs
+		showMapTable objs
 		h2 "Tags"
-		showMapTable (render.pretty) tags
+		showMapTable tags
 		h2 "Typedefs"
-		showMapTable (\ (TypeDef _ ty _ _) -> (render.pretty) ty) typedefs
+		showMapTable  typedefs
 
-astToHTMLString :: AST -> String
+astToHTMLString :: TranslUnit -> String
 astToHTMLString ast = renderHtml $ docTypeHtml $ do
 	H.head $ do
 		title "AST"
 	body $ do
 		h1 "AST"
-		showMapTable (render.pretty) ast
+		showMapTable ast

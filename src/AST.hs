@@ -5,7 +5,8 @@ module AST where
 
 import qualified Data.Map.Strict as ASTMap
 
-data Loc = Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } deriving (Eq,Ord)
+data Loc = Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int }
+	deriving (Eq,Ord)
 instance Show Loc where
 	show Loc{..} = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
 
@@ -17,7 +18,8 @@ data ZType =
 	ZPtr ZType |
 	ZEnum [Ident] |
 	ZStruct [VarDeclaration] |
-	ZUnion [VarDeclaration] deriving (Show)
+	ZUnion [VarDeclaration]
+	deriving (Show)
 
 type TranslUnit = ASTMap.Map Ident ExtDecl
 
@@ -33,6 +35,7 @@ instance Eq Ident where
 --    (the arguments and their types are in the type of the function identifier)
 
 data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
+	deriving (Show)
 
 data Expr =
 	StmtExpr Stmt ZType Loc |
@@ -46,18 +49,23 @@ data Expr =
 	Member Expr Ident Bool ZType Loc |
 	Var Ident ZType Loc |
 	Constant Const ZType Loc
+	deriving (Show)
 
 data UnaryOp = AddrOf | DerefOp | Neg | Exor | Not
+	deriving (Show)
+
 data BinaryOp =
 	Mul | Div | Add | Sub | Rmd | Shl | Shr |
 	Less | Equals | LessEq | Greater | GreaterEq |
 	And | Or | BitAnd | BitOr | BitXOr
+	deriving (Show)
 
 data Const =
 	IntConst Integer |
 	CharConst Char |
 	FloatConst String |
 	StringConst String
+	deriving (Show)
 
 data Stmt =
 	Label String Loc |
@@ -67,3 +75,4 @@ data Stmt =
 	Loop Expr Stmt Loc |   -- This is while loop. do-while and for loops are transcribed into this form.
 	Return (Maybe Expr) Loc |
 	Goto Ident Loc
+	deriving (Show)
