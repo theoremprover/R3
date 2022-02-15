@@ -4,6 +4,7 @@
 module GlobDecls where
 
 import "language-c" Language.C.Pretty
+import Language.C.Analysis
 import Language.C.Analysis.SemRep
 import Language.C.Data.Ident
 import Text.Blaze.Html4.Strict as H
@@ -35,7 +36,7 @@ globdeclsToHTMLString (GlobalDecls objs tags typedefs) = renderHtml $ docTypeHtm
 		h2 "Tags"
 		showMapTable (render.pretty) (render.pretty) tags
 		h2 "Typedefs"
-		showMapTable (render.pretty) (render.pretty) typedefs
+		showMapTable (render.pretty) (\ (TypeDef _ ty _ _) -> (render.pretty) ty) typedefs
 
 astToHTMLString :: TranslUnit -> String
 astToHTMLString ast = renderHtml $ docTypeHtml $ do
