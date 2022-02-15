@@ -106,7 +106,6 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		other → error $ "ty2ast " ++ show other ++ " not implemented!"
 
 
---data VarDeclaration = VarDeclaration Ident ZType Loc deriving (Show)
 	vardecl2ast :: NodeInfo -> VarDecl -> VarDeclaration
 	vardecl2ast ni (VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty) =
 		VarDeclaration (ident2ast ident) (ty2ast attrs ty) (ni2loc ni)
@@ -117,13 +116,14 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 	-- Function definition
 	identdecl2extdecl (FunctionDef (FunDef vardecl stmt ni)) =
 		ExtDecl (vardecl2ast ni vardecl) (Right $ stmt2ast stmt) (ni2loc ni)
---(VarDecl _ (DeclAttrs _ _ attrs) (FunctionType (FunType ret_ty paramdecls False) fun_attrs))
 
 	-- double __builtin_fabs(double);
-	identdecl2extdecl (Declaration (Decl (VarDecl _ (DeclAttrs _ _ attrs) ty) ni)) = error "Not yet implemented"
+	identdecl2extdecl (Declaration (Decl vardecl ni)) =
+		ExtDecl (vardecl2ast ni vardecl) (Left Nothing) (ni2loc ni)
 
 	-- fp_number_type __thenan_df = { CLASS_SNAN, 0, 0, ... }
-	identdecl2extdecl (ObjectDef (ObjDef (VarDecl _ (DeclAttrs _ _ attrs) ty) mb_init ni)) = error "Not yet implemented"
+	identdecl2extdecl (ObjectDef (ObjDef vardecl mb_init ni)) =
+		ExtDecl (vardecl2ast ni vardecl) (Left $ fmap expr2ast mb_init) (ni2loc ni)
 
 	-- enum fp_class_type: CLASS_INFINITY = 4
 	identdecl2extdecl (EnumeratorDef (Enumerator ident expr (EnumType sueref enums attrs _) ni)) = error "Not yet implemented"
