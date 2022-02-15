@@ -3,23 +3,26 @@
 
 module GlobDecls where
 
+import "language-c" Language.C.Pretty
 import Language.C.Analysis.SemRep
+import Language.C.Data.Ident
 import Text.Blaze.Html4.Strict as H
 import Text.Blaze.Html.Renderer.String
 import Control.Monad
 import Data.Map.Strict as Map
+import Text.PrettyPrint
 
---import Prettyptrinter
---import Prettyprinter.Render.Text
+--import Prettyprinter
+--import Prettyprinter.Render.String
 
 import AST
 
-showMapTable :: (Show k, Show v) => Map.Map k v -> Html
-showMapTable mapping = table $
+showMapTable :: (k -> String) -> (v -> String) -> Map.Map k v -> Html
+showMapTable show_k show_v mapping = table $
 	forM_ (assocs mapping) $ \ (key,val) -> tr $ do
-		td $ toHtml $ show key
+		td $ toHtml $ show_k key
 		td $ preEscapedToHtml ("&#x21a6;"::String)
-		td $ toHtml $ show val
+		td $ toHtml $ show_v val
 
 globdeclsToHTMLString :: GlobalDecls -> String
 globdeclsToHTMLString (GlobalDecls objs tags typedefs) = renderHtml $ docTypeHtml $ do
@@ -28,11 +31,11 @@ globdeclsToHTMLString (GlobalDecls objs tags typedefs) = renderHtml $ docTypeHtm
 	body $ do
 		h1 "GlobalDecls"
 		h2 "Defs/Decls"
-		showMapTable objs
+		showMapTable (render.pretty) (render.pretty) objs
 		h2 "Tags"
-		showMapTable tags
+		showMapTable (render.pretty) (render.pretty) tags
 		h2 "Typedefs"
-		showMapTable  typedefs
+		showMapTable (render.pretty) (render.pretty) typedefs
 
 astToHTMLString :: TranslUnit -> String
 astToHTMLString ast = renderHtml $ docTypeHtml $ do
@@ -40,4 +43,4 @@ astToHTMLString ast = renderHtml $ docTypeHtml $ do
 		title "AST"
 	body $ do
 		h1 "AST"
-		showMapTable ast
+		showMapTable show show ast
