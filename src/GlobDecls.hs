@@ -14,6 +14,14 @@ import Control.Monad
 import Data.Map.Strict as Map
 import Text.PrettyPrint
 
+import AST
+
+
+showMapTable showval mapping = table $
+	forM_ (assocs mapping) $ \ (key,val) -> tr $ do
+		td $ toHtml $ (render.pretty) key
+		td $ preEscapedToHtml ("&#x21a6;"::String)
+		td $ toHtml $ showval val
 
 globdeclsToHTMLString :: GlobalDecls -> String
 globdeclsToHTMLString (GlobalDecls objs tags typedefs) = renderHtml $ docTypeHtml $ do
@@ -27,9 +35,11 @@ globdeclsToHTMLString (GlobalDecls objs tags typedefs) = renderHtml $ docTypeHtm
 		showMapTable (render.pretty) tags
 		h2 "Typedefs"
 		showMapTable (\ (TypeDef _ ty _ _) -> (render.pretty) ty) typedefs
-	where
-	showMapTable showval mapping = table $
-		forM_ (assocs mapping) $ \ (key,val) -> tr $ do
-			td $ toHtml $ (render.pretty) key
-			td $ preEscapedToHtml ("&#x21a6;"::String)
-			td $ toHtml $ showval val
+
+astToHTMLString :: AST -> String
+astToHTMLString ast = renderHtml $ docTypeHtml $ do
+	H.head $ do
+		title "AST"
+	body $ do
+		h1 "AST"
+		showMapTable (render.pretty) ast

@@ -27,6 +27,7 @@ dependencies:
 - process
 - directory
 - transformers
+- extra
 
 library:
   source-dirs: src

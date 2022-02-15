@@ -17,14 +17,13 @@ main = do
 
 	let compiler = "gcc"
 	machinespec <- getMachineSpec compiler
-	exitval <- runStateT mainR3 $ R3State compiler machinespec
-	exitWith exitval
+	evalStateT mainR3 (R3State compiler machinespec) >>= exitWith
 
-mainR3 :: R3 ExitVal
+mainR3 :: R3 ExitCode
 mainR3 = do
-	parseFile "gcc" "test.c" >>= \case
+	parseFile "test.c" >>= \case
 		Left errmsg -> do
-			putStrLn errmsg
+			liftIO $ putStrLn errmsg
 			return $ ExitFailure 1
 		Right ast -> do
 			return ExitSuccess

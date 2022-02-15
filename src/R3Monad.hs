@@ -2,7 +2,7 @@
 {-# LANGUAGE RecordWildCards,LambdaCase #-}
 
 module R3Monad (
-	R3State,
+	R3State(..),
 	R3,
 	module Control.Monad.Trans.State.Lazy,
 	liftIO,MonadIO )

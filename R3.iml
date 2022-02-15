@@ -52,5 +52,7 @@
     <orderEntry type="library" name="vector-0.12.3.1" level="project" />
     <orderEntry type="library" name="safe-0.3.19" level="project" />
     <orderEntry type="library" name="primitive-0.7.3.0" level="project" />
+    <orderEntry type="library" name="extra-1.7.9" level="project" />
+    <orderEntry type="library" name="clock-0.8.2" level="project" />
   </component>
 </module>

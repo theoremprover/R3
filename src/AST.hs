@@ -11,8 +11,8 @@ instance Show Loc where
 
 data ZType =
 	ZVoid |
-	ZInt Int Bool |
-	ZFloat Int |
+	ZInt Int Bool | -- ZInt size_bits isUnsigned
+	ZFloat Int Int | -- ZFloat exp_bits significand_bits  (significand_bits includes the hidden bit, but excludes sign bit)
 	ZArray ZType (Maybe Int) |
 	ZPtr ZType |
 	ZEnum [Ident] |

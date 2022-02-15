@@ -1,28 +1,32 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE RecordWildCards,LambdaCase #-}
+{-# LANGUAGE RecordWildCards,LambdaCase,UnicodeSyntax,PackageImports #-}
 
 module Parsing (
 	parseFile)
 	where
 
-import Language.C (parseCFile,CDecl)
+import "language-c" Language.C (parseCFile,CDecl)
 import Language.C.System.GCC (newGCC)
-import Language.C.Analysis.SemRep
+import Language.C.Analysis.SemRep hiding (Stmt)
 import Language.C.Analysis.DefTable (DefTable)
 import Language.C.Analysis.DeclAnalysis (analyseTypeDecl)
 import Language.C.Analysis.AstAnalysis (analyseAST)
 import Language.C.Analysis.TravMonad (runTrav_,getDefTable,withDefTable)
 import qualified Language.C.Data.Ident as CIdent
+import Language.C.Syntax.AST
 import Language.C.Data.Node (lengthOfNode,NodeInfo)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn)
 import Text.PrettyPrint.HughesPJ (render)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.State.Lazy
 import qualified Data.Map.Strict as ASTMap
+import Data.List (nub)
 
 import GlobDecls
 import AST
 import R3Monad
+import MachineSpec
+import Utils
 
 {-
 While translating the Language.C AST to our AST, we also do type inference,
@@ -30,9 +34,10 @@ so we avoid having to define an intermediate format for an untyped R3 AST, which
 necessarily be different from the typed one (hence could not simply be implemented by a type parameter).
 -}
 
-parseFile :: String -> FilePath -> R3 (Either String TranslUnit)
-parseFile gcc filepath = do
-	parseCFile (newGCC gcc) Nothing [] filepath >>= \case
+parseFile :: FilePath -> R3 (Either String TranslUnit)
+parseFile filepath = do
+	gcc <- gets compilerR3
+	liftIO $ parseCFile (newGCC gcc) Nothing [] filepath >>= \case
 		Left parseerror   -> return $ Left $ show parseerror
 		Right ctranslunit -> case runTrav_ $ do
 			globaldecls <- analyseAST ctranslunit
@@ -42,10 +47,13 @@ parseFile gcc filepath = do
 			Left errs -> return $ Left $ "HARD ERRORS:\n" ++ unlines (map show errs)
 			Right ((globaldecls,deftable),_) -> do
 				liftIO $ writeFile "GlobDecls.html" $ globdeclsToHTMLString globaldecls
-				return $ Right $ globDecls2AST machinespec deftable globaldecls
+				machinespec <- getMachineSpec gcc
+				let ast = globDecls2AST machinespec deftable globaldecls
+				liftIO $ writeFile "AST.html" $ astToHTMLString ast
+				return $ Right ast
 
 globDecls2AST :: MachineSpec -> DefTable -> GlobalDecls -> TranslUnit
-globDecls2AST machinespec deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys cident2ident gObjs
+globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys ident2ast gObjs
 	where
 {-
 	decl2type :: DefTable -> CDecl -> Type
@@ -63,12 +71,45 @@ globDecls2AST machinespec deftable GlobalDecls{..} = ASTMap.map identdecl2extdec
 	ident2ast :: CIdent.Ident -> Ident
 	ident2ast (CIdent.Ident name i ni) = Ident name i (ni2loc ni)
 
-	ty2ast :: [Attribute] -> Type -> ZType
-	ty2ast attrs ty = case
+	ty2ast :: Attributes -> Type -> ZType
+	ty2ast attrs ty = case ty of
+		DirectType tyname _ tyattrs -> case tyname of
+			TyIntegral intty -> case (intty,modes) of
+				(TyChar,[])     → ZInt 8 True
+				(TySChar,[])    → ZInt 8 False
+				(TyUChar,[])    → ZInt 8 True
+				(TyShort,[])    → ZInt 16 False
+				(TyUShort,[])   → ZInt 16 True
+				(TyInt,[])      → ZInt intSize False
+				(TyInt,["SI"])  → ZInt 32 False
+				(TyInt,["DI"])  → ZInt 64 False
+				(TyUInt,[])     → ZInt intSize True
+				(TyUInt,["SI"]) → ZInt 32 True
+				(TyUInt,["DI"]) → ZInt 64 True
+				(TyLong,[])     → ZInt longSize False
+				(TyULong,[])    → ZInt longSize True
+				(TyLLong,[])    → ZInt longLongSize False
+				(TyULLong,[])   → ZInt longLongSize True
+				other           → error $ "ty2ast " ++ show other ++ " not implemented!"
+			TyFloating floatty → case (floatty,modes) of
+				(TyFloat,[])       → ZFloat 8 24
+				(TyFloat,["SF"])   → ZFloat 8 24
+				(TyFloat,["DF"])   → ZFloat 11 53
+				(TyDouble,[])      → ZFloat 11 53
+				(TyLDouble,[])     → ZFloat 15 113
+				other     → error $ "ty2ast " ++ show other ++ " not implemented!"
+			where
+			modes = nub $ concat $ for (tyattrs++attrs) $ \case
+				Attr (CIdent.Ident "mode" _ _) [CVar (CIdent.Ident mode _ _) _] _ -> [mode]
+				Attr (CIdent.Ident "fardata" _ _) _ _ -> []
+				attr -> error $ "mode: unknown attr " ++ show attr
+
+		other → error $ "ty2ast " ++ show other ++ " not implemented!"
+
 
 --data VarDeclaration = VarDeclaration Ident ZType Loc deriving (Show)
-	vardecl2ast :: VarDecl -> VarDeclaration
-	vardecl2ast (VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty) =
+	vardecl2ast :: NodeInfo -> VarDecl -> VarDeclaration
+	vardecl2ast ni (VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty) =
 		VarDeclaration (ident2ast ident) (ty2ast attrs ty) (ni2loc ni)
 
 --data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
@@ -76,7 +117,7 @@ globDecls2AST machinespec deftable GlobalDecls{..} = ASTMap.map identdecl2extdec
 
 	-- Function definition
 	identdecl2extdecl (FunctionDef (FunDef vardecl stmt ni)) =
-		ExtDecl (vardecl2ast vardecl) (Right $ stmt2ast stmt) (ni2loc ni)
+		ExtDecl (vardecl2ast ni vardecl) (Right $ stmt2ast stmt) (ni2loc ni)
 --(VarDecl _ (DeclAttrs _ _ attrs) (FunctionType (FunType ret_ty paramdecls False) fun_attrs))
 
 	-- double __builtin_fabs(double);
@@ -87,3 +128,6 @@ globDecls2AST machinespec deftable GlobalDecls{..} = ASTMap.map identdecl2extdec
 
 	-- enum fp_class_type: CLASS_INFINITY = 4
 	identdecl2extdecl (EnumeratorDef (Enumerator ident expr (EnumType sueref enums attrs _) ni)) = error "Not yet implemented"
+
+	stmt2ast :: CStat -> Stmt
+	stmt2ast cstmt = error ""
