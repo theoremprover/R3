@@ -118,15 +118,15 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		where
 		body = case identdecl of
 			FunctionDef (FunDef vardecl stmt ni)   -> Right $ stmt2ast stmt
-			Declaration (Decl vardecl ni))         -> Left Nothing
-			ObjectDef (ObjDef vardecl mb_init ni)) -> Left $ case mb_init of
+			Declaration (Decl vardecl ni)          -> Left Nothing
+			ObjectDef (ObjDef vardecl mb_init ni)  -> Left $ case mb_init of
 				Nothing -> Nothing
 				Just (CInitExpr expr _) -> Just $ expr2ast expr
-				Just (CInitList initlist _) ->
-			EnumeratorDef (Enumerator _ expr _ _)) -> Left $ Just $ expr2ast expr
+				Just (CInitList initlist _) -> error "CInitList not implemented yet"
+			EnumeratorDef (Enumerator _ expr _ _)  -> Left $ Just $ expr2ast expr
 
 	stmt2ast :: CStat -> Stmt
-	stmt2ast cstmt = error ""
+	stmt2ast cstmt = ExprStmt (Var (Ident "DUMMY" 0 (ni2loc $ nodeInfo cstmt)) ZVoid (ni2loc $ nodeInfo cstmt)) (ni2loc $ nodeInfo cstmt)  --DUMMY
 
 	expr2ast :: CExpr -> Expr
-	expr2ast expr = error ""
+	expr2ast expr = Var (Ident "DUMMY" 0 (ni2loc $ nodeInfo expr)) ZVoid (ni2loc $ nodeInfo expr)
