@@ -48,8 +48,16 @@ data Expr =
 	Index Expr Expr ZType Loc |
 	Member Expr Ident Bool ZType Loc |
 	Var Ident ZType Loc |
-	Constant Const ZType Loc
+	Constant Const ZType Loc |
+{-
+	int a[3] = { 1,2,3 };
+	enum X = { ABC=0,DEF=1 };
+	y = { first=1, 2, sub={ 'a', 3 }, last=7 };
+-}
+	CurlyCompound [(Maybe Ident,Maybe Expr)]
 	deriving (Show)
+
+
 
 data UnaryOp = AddrOf | DerefOp | Neg | Exor | Not
 	deriving (Show)

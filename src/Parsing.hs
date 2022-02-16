@@ -114,19 +114,19 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 	identdecl2extdecl :: IdentDecl -> ExtDecl
 
 	-- Function definition
-	identdecl2extdecl (FunctionDef (FunDef vardecl stmt ni)) =
-		ExtDecl (vardecl2ast ni vardecl) (Right $ stmt2ast stmt) (ni2loc ni)
-
-	-- double __builtin_fabs(double);
-	identdecl2extdecl (Declaration (Decl vardecl ni)) =
-		ExtDecl (vardecl2ast ni vardecl) (Left Nothing) (ni2loc ni)
-
-	-- fp_number_type __thenan_df = { CLASS_SNAN, 0, 0, ... }
-	identdecl2extdecl (ObjectDef (ObjDef vardecl mb_init ni)) =
-		ExtDecl (vardecl2ast ni vardecl) (Left $ fmap expr2ast mb_init) (ni2loc ni)
-
-	-- enum fp_class_type: CLASS_INFINITY = 4
-	identdecl2extdecl (EnumeratorDef (Enumerator ident expr (EnumType sueref enums attrs _) ni)) = error "Not yet implemented"
+	identdecl2extdecl identdecl = ExtDecl (vardecl2ast $ getVarDecl identdecl) body (ni2loc $ nodeInfo identdecl)
+		where
+		body = case identdecl of
+			FunctionDef (FunDef vardecl stmt ni)   -> Right $ stmt2ast stmt
+			Declaration (Decl vardecl ni))         -> Left Nothing
+			ObjectDef (ObjDef vardecl mb_init ni)) -> Left $ case mb_init of
+				Nothing -> Nothing
+				Just (CInitExpr expr _) -> Just $ expr2ast expr
+				Just (CInitList initlist _) ->
+			EnumeratorDef (Enumerator _ expr _ _)) -> Left $ Just $ expr2ast expr
 
 	stmt2ast :: CStat -> Stmt
 	stmt2ast cstmt = error ""
+
+	expr2ast :: CExpr -> Expr
+	expr2ast expr = error ""
