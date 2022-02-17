@@ -5,25 +5,28 @@ module AST where
 
 import qualified Data.Map.Strict as ASTMap
 
-data Loc = Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int }
+data Loc = Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } | NoLoc String
 	deriving (Eq,Ord)
 instance Show Loc where
 	show Loc{..} = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
+	show (NoLoc s) = "<"++s++">"
 
 data ZType =
-	ZVoid |
+	ZUnit |         -- void is the unit type
 	ZInt Int Bool | -- ZInt size_bits isUnsigned
 	ZFloat Int Int | -- ZFloat exp_bits significand_bits  (significand_bits includes the hidden bit, but excludes sign bit)
-	ZArray ZType (Maybe Int) |
+	ZArray ZType (Maybe Integer) |
 	ZPtr ZType |
 	ZEnum [Ident] |
 	ZStruct [VarDeclaration] |
-	ZUnion [VarDeclaration]
+	ZUnion [VarDeclaration] |
+	ZFun ZType {-isVariadic::-}Bool [ZType] |
+	ZUnhandled String
 	deriving (Show)
 
 type TranslUnit = ASTMap.Map Ident ExtDecl
 
-data VarDeclaration = VarDeclaration Ident ZType Loc deriving (Show)
+data VarDeclaration = VarDeclaration Ident String ZType Loc deriving (Show)
 
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord)
 instance Eq Ident where
@@ -54,7 +57,7 @@ data Expr =
 //	enum X = { ABC=0,DEF=1 };
 	y = { .first=1, 2, .sub={ 'a', 3 }, .last=7 };
 -}
-	Curly [(Maybe Ident,Expr)] ZType Loc
+	Comp [(Maybe Ident,Expr)] ZType Loc
 	deriving (Show)
 
 data UnaryOp = AddrOf | DerefOp | Neg | Exor | Not
