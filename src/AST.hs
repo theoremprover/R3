@@ -9,13 +9,13 @@ data Loc = Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::I
 	deriving (Eq,Ord)
 instance Show Loc where
 	show Loc{..} = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
-	show (NoLoc s) = "<"++s++">"
+	show (NoLoc s) = s
 
 data CompoundType = Struct | Union deriving (Show,Eq,Ord)
 
 data ZType =
-	ZUnit |         -- void is the unit type
-	ZInt Int Bool | -- ZInt size_bits isUnsigned
+	ZUnit |          -- void is the unit type
+	ZInt Int Bool |  -- ZInt size_bits isUnsigned
 	ZFloat Int Int | -- ZFloat exp_bits significand_bits  (significand_bits includes the hidden bit, but excludes sign bit)
 	ZArray ZType (Maybe Integer) |
 	ZPtr ZType |
