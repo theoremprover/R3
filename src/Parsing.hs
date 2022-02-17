@@ -7,14 +7,14 @@ module Parsing (
 
 import "language-c" Language.C (parseCFile,CDecl)
 import Language.C.System.GCC (newGCC)
-import Language.C.Analysis.SemRep hiding (Stmt)
+import Language.C.Analysis.SemRep hiding (Stmt,Expr)
 import Language.C.Analysis.DefTable (DefTable)
 import Language.C.Analysis.DeclAnalysis (analyseTypeDecl)
 import Language.C.Analysis.AstAnalysis (analyseAST)
 import Language.C.Analysis.TravMonad (runTrav_,getDefTable,withDefTable)
 import qualified Language.C.Data.Ident as CIdent
 import Language.C.Syntax.AST
-import Language.C.Data.Node (lengthOfNode,NodeInfo)
+import Language.C.Data.Node (lengthOfNode,NodeInfo,nodeInfo)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.State.Lazy
@@ -97,24 +97,29 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 				(TyDouble,[])      → ZFloat 11 53
 				(TyLDouble,[])     → ZFloat 15 113
 				other     → error $ "ty2ast " ++ show other ++ " not implemented!"
+			TyVoid -> ZVoid
+			TyEnum _ -> ZInt intSize False
+			TyComp (CompTypeRef sueref comptykind _) -> 
 			where
 			modes = nub $ concat $ for (tyattrs++attrs) $ \case
 				Attr (CIdent.Ident "mode" _ _) [CVar (CIdent.Ident mode _ _) _] _ -> [mode]
 				Attr (CIdent.Ident "fardata" _ _) _ _ -> []
 				attr -> error $ "mode: unknown attr " ++ show attr
 
+
 		other → error $ "ty2ast " ++ show other ++ " not implemented!"
 
 
-	vardecl2ast :: NodeInfo -> VarDecl -> VarDeclaration
-	vardecl2ast ni (VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty) =
-		VarDeclaration (ident2ast ident) (ty2ast attrs ty) (ni2loc ni)
+	identdecl2ast :: IdentDecl -> VarDeclaration
+	identdecl2ast identdecl = VarDeclaration (ident2ast ident) (ty2ast attrs ty) (ni2loc $ nodeInfo identdecl)
+		where
+		VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty = getVarDecl identdecl
 
 --data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
 	identdecl2extdecl :: IdentDecl -> ExtDecl
 
 	-- Function definition
-	identdecl2extdecl identdecl = ExtDecl (vardecl2ast $ getVarDecl identdecl) body (ni2loc $ nodeInfo identdecl)
+	identdecl2extdecl identdecl = ExtDecl (identdecl2ast identdecl) body (ni2loc $ nodeInfo identdecl)
 		where
 		body = case identdecl of
 			FunctionDef (FunDef vardecl stmt ni)   -> Right $ stmt2ast stmt
