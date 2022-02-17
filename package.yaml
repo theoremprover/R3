@@ -21,6 +21,7 @@ dependencies:
 - pretty
 - containers
 - blaze-html
+- html
 - filepath
 - language-c-quote
 - mainland-pretty

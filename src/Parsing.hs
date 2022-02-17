@@ -28,6 +28,7 @@ import AST
 import R3Monad
 import MachineSpec
 import Utils
+import DataTree
 
 {-
 While translating the Language.C AST to our AST, we also do type inference,
@@ -35,25 +36,25 @@ so we avoid having to define an intermediate format for an untyped R3 AST, which
 necessarily be different from the typed one (hence could not simply be implemented by a type parameter).
 -}
 
-enumZType = ZInt intSize False :: ZType
-
 parseFile :: FilePath -> R3 (Either String TranslUnit)
 parseFile filepath = do
 	gcc <- gets compilerR3
 	liftIO $ parseCFile (newGCC gcc) Nothing [] filepath >>= \case
 		Left parseerror   → return $ Left $ show parseerror
-		Right ctranslunit → case runTrav_ $ do
-			globaldecls <- analyseAST ctranslunit
-			deftable <- getDefTable
-			return (globaldecls,deftable)
-			of
-			Left errs -> return $ Left $ "HARD ERRORS:\n" ++ unlines (map show errs)
-			Right ((globaldecls,deftable),_) → do
-				liftIO $ writeFile "GlobDecls.html" $ globdeclsToHTMLString globaldecls
-				machinespec <- getMachineSpec gcc
-				let ast = globDecls2AST machinespec deftable globaldecls
-				liftIO $ writeFile "AST.html" $ astToHTMLString ast
-				return $ Right ast
+		Right ctranslunit → do
+			writeFile "LanguageC_AST.html" $ genericToHTMLString ctranslunit
+			case runTrav_ $ do
+				globaldecls <- analyseAST ctranslunit
+				deftable <- getDefTable
+				return (globaldecls,deftable)
+				of
+				Left errs -> return $ Left $ "HARD ERRORS:\n" ++ unlines (map show errs)
+				Right ((globaldecls,deftable),_) → do
+					liftIO $ writeFile "GlobDecls.html" $ globdeclsToHTMLString globaldecls
+					machinespec <- getMachineSpec gcc
+					let ast = globDecls2AST machinespec deftable globaldecls
+					liftIO $ writeFile "AST.html" $ astToHTMLString ast
+					return $ Right ast
 
 globDecls2AST :: MachineSpec -> DefTable -> GlobalDecls -> TranslUnit
 globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys ident2ast gObjs
@@ -103,23 +104,34 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 				(TyDouble,[])    → ZFloat 11 53
 				(TyLDouble,[])   → ZFloat 15 113
 				other            → error $ "ty2ast " ++ show other ++ " not implemented!"
-			TyVoid → ZUnit
-			TyEnum (EnumTypeRef sueref _) → resolve_sueref sueref
-			TyComp comptyperef → resolve_comptyperef comptyperef where
-				resolve_comptyperef (CompTypeRef sueref comptykind _) = case AST.Map.lookup sueref gTags of
-					Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
-					Just (CompDef (CompType SUERef CompTyKind [MemberDecl] Attributes NodeInfo)) →
-					Just (EnumDef (EnumType SUERef [Enumerator] Attributes NodeInfo)) → enumZType
-			_ → ZUnhandled $ (render.pretty) ty
+			TyVoid             → ZUnit
+			TyEnum enumtyperef → resolve_sueref enumtyperef
+			TyComp comptyperef → resolve_sueref comptyperef
+			_                  → ZUnhandled $ (render.pretty) ty
+
 			where
+
+			resolve_sueref :: (HasSUERef a) => a -> ZType
+			resolve_sueref hassueref = case ASTMap.lookup sueref gTags of
+				Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
+				Just (CompDef (CompType _ comptykind memberdecls attrs ni)) →
+					ZCompound (compkind2comptype comptykind) (map (decl2ast ni) memberdecls)
+				Just (EnumDef (EnumType _ enumerators attrs ni)) →
+					ZEnum $ for enumerators $ \ (Enumerator ident expr _ ni) →
+						(ident2ast ident,eval_const_expr expr)
+				where
+				sueref = sueRef hassueref
+				compkind2comptype StructTag = Struct
+				compkind2comptype UnionTag  = Union
+
 			modes = nub $ concat $ for (tyattrs++attrs) $ \case
 				Attr (CIdent.Ident "mode" _ _) [CVar (CIdent.Ident mode _ _) _] _ → [mode]
 				Attr (CIdent.Ident "fardata" _ _) _ _                             → []
 				attr → error $ "mode: unknown attr " ++ show attr
 
 		ArrayType elem_ty arraysize _ _ → ZArray (ty2ast [] elem_ty) $ case arraysize of
-			ArraySize _ (CConst (CIntConst cinteger _)) → Just $ getCInteger cinteger
-			UnknownArraySize _                          → Nothing
+			ArraySize _ size   → Just $ eval_const_expr size
+			UnknownArraySize _ → Nothing
 
 		PtrType target_ty _ _ → ZPtr $ ty2ast [] target_ty
 
@@ -135,21 +147,26 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		where
 		VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty = getVarDecl decl
 
+	eval_const_expr :: CExpr -> Integer
+	eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
+
 --data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
 	identdecl2extdecl :: IdentDecl -> ExtDecl
 
-	-- Function definition
-	identdecl2extdecl identdecl = ExtDecl (decl2ast ni identdecl) body (ni2loc ni)
+	identdecl2extdecl identdecl = ExtDecl vardeclast body loc
 		where
+		vardeclast = decl2ast ni identdecl
 		ni = nodeInfo identdecl
+		loc = ni2loc ni
 		body = case identdecl of
 			FunctionDef (FunDef vardecl stmt _)   → Right $ stmt2ast stmt
 			Declaration (Decl vardecl _)          → Left Nothing
-			ObjectDef (ObjDef vardecl mb_init _)  → Left $ case mb_init of
-				Nothing                     → Nothing
-				Just (CInitExpr expr _)     → Just $ expr2ast expr
-				Just (CInitList initlist _) → error "CInitList not implemented yet"
-			EnumeratorDef (Enumerator _ expr _ _)  → Left $ Just $ expr2ast expr
+			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast expr
+			ObjectDef (ObjDef vardecl mb_init _)  → Left $ fmap initializer2expr mb_init where
+				initializer2expr :: CInitializer NodeInfo -> Expr
+				initializer2expr (CInitExpr expr _)     = expr2ast expr
+				initializer2expr (CInitList initlist _) = Comp idexprs (typeVD vardeclast) loc where
+					idexprs = for initlist $ \ ([],initializer) → initializer2expr initializer
 
 	stmt2ast :: CStat -> Stmt
 	stmt2ast cstmt = ExprStmt (Var (Ident "DUMMY" 0 (ni2loc $ nodeInfo cstmt)) ZUnit (ni2loc $ nodeInfo cstmt)) (ni2loc $ nodeInfo cstmt)  --DUMMY

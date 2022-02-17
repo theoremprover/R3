@@ -11,22 +11,28 @@ instance Show Loc where
 	show Loc{..} = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
 	show (NoLoc s) = "<"++s++">"
 
+data CompoundType = Struct | Union deriving (Show,Eq,Ord)
+
 data ZType =
 	ZUnit |         -- void is the unit type
 	ZInt Int Bool | -- ZInt size_bits isUnsigned
 	ZFloat Int Int | -- ZFloat exp_bits significand_bits  (significand_bits includes the hidden bit, but excludes sign bit)
 	ZArray ZType (Maybe Integer) |
 	ZPtr ZType |
-	ZEnum [Ident] |
-	ZStruct [VarDeclaration] |
-	ZUnion [VarDeclaration] |
+	ZCompound CompoundType [VarDeclaration] |
+	ZEnum [(Ident,Integer)] |
 	ZFun ZType {-isVariadic::-}Bool [ZType] |
 	ZUnhandled String
 	deriving (Show)
 
 type TranslUnit = ASTMap.Map Ident ExtDecl
 
-data VarDeclaration = VarDeclaration Ident String ZType Loc deriving (Show)
+data VarDeclaration = VarDeclaration {
+	identVD :: Ident,
+	sourceTypeVD :: String,
+	typeVD :: ZType,
+	locVD :: Loc }
+	deriving (Show)
 
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord)
 instance Eq Ident where
@@ -57,7 +63,7 @@ data Expr =
 //	enum X = { ABC=0,DEF=1 };
 	y = { .first=1, 2, .sub={ 'a', 3 }, .last=7 };
 -}
-	Comp [(Maybe Ident,Expr)] ZType Loc
+	Comp [Expr] ZType Loc
 	deriving (Show)
 
 data UnaryOp = AddrOf | DerefOp | Neg | Exor | Not
