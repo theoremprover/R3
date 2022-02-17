@@ -35,6 +35,8 @@ so we avoid having to define an intermediate format for an untyped R3 AST, which
 necessarily be different from the typed one (hence could not simply be implemented by a type parameter).
 -}
 
+enumZType = ZInt intSize False :: ZType
+
 parseFile :: FilePath -> R3 (Either String TranslUnit)
 parseFile filepath = do
 	gcc <- gets compilerR3
@@ -102,11 +104,12 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 				(TyLDouble,[])   → ZFloat 15 113
 				other            → error $ "ty2ast " ++ show other ++ " not implemented!"
 			TyVoid → ZUnit
-			TyEnum _ → ZInt intSize False
+			TyEnum (EnumTypeRef sueref _) → resolve_sueref sueref
 			TyComp comptyperef → resolve_comptyperef comptyperef where
-				resolve_comptyperef (CompTypeRef sueref comptykind _) = case sueref of
-					CIdent.AnonymousRef name → error $ "XXX " ++ show comptyperef
-					CIdent.NamedRef ident → error $ "XXX " ++ show comptyperef
+				resolve_comptyperef (CompTypeRef sueref comptykind _) = case AST.Map.lookup sueref gTags of
+					Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
+					Just (CompDef (CompType SUERef CompTyKind [MemberDecl] Attributes NodeInfo)) →
+					Just (EnumDef (EnumType SUERef [Enumerator] Attributes NodeInfo)) → enumZType
 			_ → ZUnhandled $ (render.pretty) ty
 			where
 			modes = nub $ concat $ for (tyattrs++attrs) $ \case
@@ -126,7 +129,6 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		TypeDefType (TypeDefRef _ innerty _) _ attribs → ty2ast (attribs++attrs) innerty
 
 		other → error $ "ty2ast " ++ show other ++ " not implemented!"
-
 
 	decl2ast :: (Declaration d) => NodeInfo -> d -> VarDeclaration
 	decl2ast ni decl = VarDeclaration (ident2ast ident) ((render.pretty) ty) (ty2ast attrs ty) (ni2loc ni)
