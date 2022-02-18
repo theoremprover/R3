@@ -9,6 +9,10 @@ import System.Exit
 import MachineSpec
 import Parsing
 import R3Monad
+import DataTree
+
+function_name = "_fpmul_parts"
+file_name = "test.c"
 
 main :: IO ()
 main = do
@@ -21,9 +25,11 @@ main = do
 
 mainR3 :: R3 ExitCode
 mainR3 = do
-	parseFile "test.c" >>= \case
+	parseFile file_name >>= \case
 		Left errmsg -> do
 			liftIO $ putStrLn errmsg
 			return $ ExitFailure 1
 		Right ast -> do
+			Just body = ASTMap.lookup function_name ast
+			writeFile "function_name.html" $ genericToHTMLString ast
 			return ExitSuccess

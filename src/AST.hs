@@ -1,17 +1,20 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards,DeriveGeneric #-}
 
 module AST where
 
+import Data.Generics
 import qualified Data.Map.Strict as ASTMap
 
-data Loc = Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } | NoLoc String
+data Loc =
+	Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } |
+	NoLoc String
 	deriving (Eq,Ord)
 instance Show Loc where
 	show Loc{..} = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
 	show (NoLoc s) = s
 
-data CompoundType = Struct | Union deriving (Show,Eq,Ord)
+data CompoundType = Struct | Union deriving (Show,Eq,Ord,Generic)
 
 data ZType =
 	ZUnit |          -- void is the unit type
@@ -23,18 +26,18 @@ data ZType =
 	ZEnum [(Ident,Integer)] |
 	ZFun ZType {-isVariadic::-}Bool [ZType] |
 	ZUnhandled String
-	deriving (Show)
+	deriving (Show,Generic)
 
 type TranslUnit = ASTMap.Map Ident ExtDecl
 
 data VarDeclaration = VarDeclaration {
-	identVD :: Ident,
+	identVD      :: Ident,
 	sourceTypeVD :: String,
-	typeVD :: ZType,
-	locVD :: Loc }
-	deriving (Show)
+	typeVD       :: ZType,
+	locVD        :: Loc }
+	deriving (Show,Generic)
 
-data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord)
+data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic)
 instance Eq Ident where
 	ident1 == ident2 = nameIdent ident1 == nameIdent ident2 && idIdent ident1 == idIdent ident2
 
@@ -44,7 +47,7 @@ instance Eq Ident where
 --    (the arguments and their types are in the type of the function identifier)
 
 data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
-	deriving (Show)
+	deriving (Show,Generic)
 
 data Expr =
 	StmtExpr Stmt ZType Loc |
@@ -64,23 +67,23 @@ data Expr =
 	y = { .first=1, 2, .sub={ 'a', 3 }, .last=7 };
 -}
 	Comp [Expr] ZType Loc
-	deriving (Show)
+	deriving (Show,Generic)
 
 data UnaryOp = AddrOf | DerefOp | Neg | Exor | Not
-	deriving (Show)
+	deriving (Show,Generic)
 
 data BinaryOp =
 	Mul | Div | Add | Sub | Rmd | Shl | Shr |
 	Less | Equals | LessEq | Greater | GreaterEq |
 	And | Or | BitAnd | BitOr | BitXOr
-	deriving (Show)
+	deriving (Show,Generic)
 
 data Const =
 	IntConst Integer |
 	CharConst Char |
 	FloatConst String |
 	StringConst String
-	deriving (Show)
+	deriving (Show,Generic)
 
 data Stmt =
 	Label String Loc |
@@ -90,4 +93,4 @@ data Stmt =
 	Loop Expr Stmt Loc |   -- This is while loop. do-while and for loops are transcribed into this form.
 	Return (Maybe Expr) Loc |
 	Goto Ident Loc
-	deriving (Show)
+	deriving (Show,Generic)

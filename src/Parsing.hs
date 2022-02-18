@@ -36,7 +36,7 @@ so we avoid having to define an intermediate format for an untyped R3 AST, which
 necessarily be different from the typed one (hence could not simply be implemented by a type parameter).
 -}
 
-parseFile :: FilePath -> R3 (Either String TranslUnit)
+parseFile :: FilePath → R3 (Either String TranslUnit)
 parseFile filepath = do
 	gcc <- gets compilerR3
 	liftIO $ parseCFile (newGCC gcc) Nothing [] filepath >>= \case
@@ -56,7 +56,7 @@ parseFile filepath = do
 					liftIO $ writeFile "AST.html" $ astToHTMLString ast
 					return $ Right ast
 
-globDecls2AST :: MachineSpec -> DefTable -> GlobalDecls -> TranslUnit
+globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit
 globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys ident2ast gObjs
 	where
 {-
@@ -69,15 +69,15 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		Right (ty,_) -> ty
 -}
 
-	ni2loc :: NodeInfo -> Loc
+	ni2loc :: NodeInfo → Loc
 	ni2loc ni = case posOf ni of
 		pos | isSourcePos pos → Loc (posFile pos) (posRow pos) (posColumn pos) (fromJust $ lengthOfNode ni)
 		other                 → NoLoc $ show other
 
-	ident2ast :: CIdent.Ident -> Ident
+	ident2ast :: CIdent.Ident → Ident
 	ident2ast (CIdent.Ident name i ni) = Ident name i (ni2loc ni)
 
-	ty2ast :: Attributes -> Type -> ZType
+	ty2ast :: Attributes → Type → ZType
 	ty2ast attrs ty = case ty of
 		DirectType tyname _ tyattrs → case tyname of
 			TyIntegral intty → case (intty,modes) of
@@ -111,7 +111,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 
 			where
 
-			resolve_sueref :: (HasSUERef a) => a -> ZType
+			resolve_sueref :: (HasSUERef a) => a → ZType
 			resolve_sueref hassueref = case ASTMap.lookup sueref gTags of
 				Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
 				Just (CompDef (CompType _ comptykind memberdecls attrs ni)) →
@@ -142,7 +142,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 
 		other → error $ "ty2ast " ++ show other ++ " not implemented!"
 
-	decl2ast :: (Declaration d) => NodeInfo -> d -> VarDeclaration
+	decl2ast :: (Declaration d) => NodeInfo → d → VarDeclaration
 	decl2ast ni decl = VarDeclaration (ident2ast ident) ((render.pretty) ty) (ty2ast attrs ty) (ni2loc ni)
 		where
 		VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty = getVarDecl decl
@@ -151,7 +151,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 	eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
 
 --data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
-	identdecl2extdecl :: IdentDecl -> ExtDecl
+	identdecl2extdecl :: IdentDecl → ExtDecl
 
 	identdecl2extdecl identdecl = ExtDecl vardeclast body loc
 		where
@@ -163,13 +163,13 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 			Declaration (Decl vardecl _)          → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast expr
 			ObjectDef (ObjDef vardecl mb_init _)  → Left $ fmap initializer2expr mb_init where
-				initializer2expr :: CInitializer NodeInfo -> Expr
+				initializer2expr :: CInitializer NodeInfo → Expr
 				initializer2expr (CInitExpr expr _)     = expr2ast expr
 				initializer2expr (CInitList initlist _) = Comp idexprs (typeVD vardeclast) loc where
 					idexprs = for initlist $ \ ([],initializer) → initializer2expr initializer
 
-	stmt2ast :: CStat -> Stmt
+	stmt2ast :: CStat → Stmt
 	stmt2ast cstmt = ExprStmt (Var (Ident "DUMMY" 0 (ni2loc $ nodeInfo cstmt)) ZUnit (ni2loc $ nodeInfo cstmt)) (ni2loc $ nodeInfo cstmt)  --DUMMY
 
-	expr2ast :: CExpr -> Expr
+	expr2ast :: CExpr → Expr
 	expr2ast expr = Var (Ident "DUMMY" 0 (ni2loc $ nodeInfo expr)) ZUnit (ni2loc $ nodeInfo expr)
