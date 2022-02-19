@@ -6,6 +6,13 @@ module AST where
 import GHC.Generics
 import qualified Data.Map.Strict as ASTMap
 
+
+data Te = Te [Te] | TeInt Int deriving (Show,Generic)
+testTe = Te [ Te [TeInt 1,TeInt 2], Te [ TeInt 3, TeInt 4 ]]
+
+testG = [[1,2,3],[4,5,6]] :: [[Int]]
+
+
 type ASTMap k v = ASTMap.Map k v
 
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic)

@@ -1,23 +1,25 @@
-{-# LANGUAGE PackageImports,TypeOperators,FlexibleInstances,FlexibleContexts,ScopedTypeVariables,UndecidableInstances #-}
+{-# LANGUAGE PackageImports,TypeOperators,FlexibleInstances,
+	FlexibleContexts,ScopedTypeVariables,UndecidableInstances,QuasiQuotes #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module DataTree (genericToHTMLString,genericToString,dataTreeToHTMLString,DataTree(..)) where
 
 import GHC.Generics
-import "language-c" Language.C
+import Language.C
 import Language.C.Data.Ident
 import Text.Html
-
+import Text.RawString.QQ
 
 data DataTree = DataTree String [DataTree] | Leaf String deriving (Show)
 
-data Mode = None | CollectList deriving (Show,Eq)
+--type Mode = Int
+data Mode = None | CollectList deriving Show
 
 class DataTreeNode f where
 	dataTree :: Mode -> f p -> [DataTree]
 
 instance DataTreeNode V1 where
-	dataTree _ _ = error "DataTreeNode of empty type!"
+	dataTree _ _ = error "The impossible happened: DataTreeNode of empty type!"
 
 instance {-# OVERLAPS #-} DataTreeNode (K1 i NodeInfo) where
 	dataTree _ (K1 c) = [Leaf $ show c]
@@ -37,12 +39,35 @@ instance {-# OVERLAPS #-} DataTreeNode (K1 i Integer) where
 instance (Generic c,DataTreeNode (Rep c)) => DataTreeNode (K1 i c) where
 	dataTree mode (K1 c) = dataTree mode (from c)
 
+{-
+*DataTree> :t (undefined :: Rep [[Int]] p)
+(undefined :: Rep [[Int]] p)
+  :: D1
+       ('MetaData "[]" "GHC.Types" "ghc-prim" 'False)
+       (C1 ('MetaCons "[]" 'PrefixI 'False) U1
+        :+: C1
+              ('MetaCons ":" ('InfixI 'LeftAssociative 9) 'False)
+              (S1
+                 ('MetaSel
+                    'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy)
+                 (Rec0 [Int])
+               :*: S1
+                     ('MetaSel
+                        'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy)
+                     (Rec0 [[Int]])))
+       p
+-}
+{-
 instance (DataTreeNode f,Constructor c) => DataTreeNode (M1 C c f) where
 	dataTree mode (M1 x) = case (mode,conName (undefined :: M1 C c f p)) of
 		(None,       ":")  -> [DataTree "[]" (dataTree CollectList x)]
 		(CollectList,":")  -> dataTree CollectList x
 		(CollectList,"[]") -> []
 		(_,conname)        -> [DataTree conname (dataTree None x)]
+-}
+instance (DataTreeNode f,Constructor c) => DataTreeNode (M1 C c f) where
+	dataTree mode (M1 x) = case (mode,conName (undefined :: M1 C c f p)) of
+		(_,conname) -> [DataTree conname (dataTree None x)]
 
 instance (DataTreeNode f,Selector s) => DataTreeNode (M1 S s f) where
 	dataTree mode (M1 x) = dataTree mode x
@@ -88,83 +113,84 @@ dataTreeToHTMLString datatrees = renderHtml $ pageframe $ map dataTreeToHtml dat
 		header (style css) +++
 		body ( concatHtml (chkbox : tree_htmls) +++ tag "script" toggler +++ tag "script" expandall )
 
-css = primHtml "\
-\ ul, #myUL {\
-\  list-style-type: none;\
-\ }\
-\ \
-\ #myUL {\
-\  margin: 0;\
-\  padding: 0;\
-\ }\
-\ \
-\ .caret {\
-\  cursor: pointer;\
-\  user-select: none;\
-\ }\
-\ \
-\ .caret::before {\
-\  content: \"\\229E\";\
-\  color: #808080;\
-\  display: inline-block;\
-\  margin-right: 6px;\
-\ }\
-\ \
-\ .caret-down::before {\
-\  content: \"\\229F\";\
-\  color: #808080;\
-\ }\
-\ \
-\ .leaf {\
-\  cursor: pointer;\
-\  user-select: none;\
-\ }\
-\ \
-\ .leaf::before {\
-\  content: \"\\22A1\";\
-\  visibility: hidden;\
-\  color: #808080;\
-\  display: inline-block;\
-\  margin-right: 6px;\
-\ }\
-\ \
-\ .leaf-down::before {\
-\  content: \"\\22A1\";\
-\  visibility: hidden;\
-\  color: #808080;\
-\ }\
-\ \
-\ .nested {\
-\  display: none;\
-\  margin: 0;\
-\ }\
-\ \
-\ .active {\
-\  display: block;\
-\  margin: 0;\
-\ }\
-\ "
+css = primHtml [r|
+ul, #myUL {
+ list-style-type: none;
+}
 
-toggler = primHtml "\
-\ var toggler = document.getElementsByClassName(\"caret\");\
-\ var i;\
-\ \
-\ for (i = 0; i < toggler.length; i++) {\
-\  toggler[i].addEventListener(\"click\", function() {\
-\    this.parentElement.querySelector(\".nested\").classList.toggle(\"active\");\
-\    this.classList.toggle(\"caret-down\");\
-\  });\
-\ }"
+#myUL {
+ margin: 0;
+ padding: 0;
+}
 
-expandall = primHtml "\
-\ function toggleexpand() {\
-\   var checkBox = document.getElementById(\"cbtoggleexpand\");\
-\   if (checkBox.checked == true){\
-\     document.querySelectorAll(\".nested\").forEach(function(elt) { elt.classList.add(\"active\"); } );\
-\     document.querySelectorAll(\".caret\").forEach(function(elt) {elt.classList.add(\"caret-down\");} );\
-\   } else {\
-\     document.querySelectorAll(\".nested\").forEach(function(elt) { elt.classList.remove(\"active\"); } );\
-\     document.querySelectorAll(\".caret\").forEach(function(elt) {elt.classList.remove(\"caret-down\");} );\
-\   }\
-\ }\
-\ "
+.caret {
+ cursor: pointer;
+ user-select: none;
+}
+
+.caret::before {
+ content: "229E";
+ color: #808080;
+ display: inline-block;
+ margin-right: 6px;
+}
+
+.caret-down::before {
+ content: "229F";
+ color: #808080;
+}
+
+.leaf {
+ cursor: pointer;
+ user-select: none;
+}
+
+.leaf::before {
+ content: "22A1";
+ visibility: hidden;
+ color: #808080;
+ display: inline-block;
+ margin-right: 6px;
+}
+
+.leaf-down::before {
+ content: "22A1";
+ visibility: hidden;
+ color: #808080;
+}
+
+.nested {
+ display: none;
+ margin: 0;
+}
+
+.active {
+ display: block;
+ margin: 0;
+}
+|]
+
+toggler = primHtml [r|
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+ toggler[i].addEventListener("click", function() {
+   this.parentElement.querySelector(".nested").classList.toggle("active");
+   this.classList.toggle("caret-down");
+ });
+}
+|]
+
+expandall = primHtml [r|
+function toggleexpand() {
+  var checkBox = document.getElementById("cbtoggleexpand");
+  if (checkBox.checked == true){
+    document.querySelectorAll(".nested").forEach(function(elt) { elt.classList.add("active"); } );
+    document.querySelectorAll(".caret").forEach(function(elt) {elt.classList.add("caret-down");} );
+  } else {
+    document.querySelectorAll(".nested").forEach(function(elt) { elt.classList.remove("active"); } );
+    document.querySelectorAll(".caret").forEach(function(elt) {elt.classList.remove("caret-down");} );
+  }
+}
+|]

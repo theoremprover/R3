@@ -23,12 +23,11 @@ dependencies:
 - blaze-html
 - html
 - filepath
-- language-c-quote
-- mainland-pretty
 - process
 - directory
 - transformers
 - extra
+- raw-strings-qq
 
 library:
   source-dirs: src

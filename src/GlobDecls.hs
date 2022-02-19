@@ -3,7 +3,7 @@
 
 module GlobDecls where
 
-import "language-c" Language.C.Pretty
+import Language.C.Pretty
 import Language.C.Analysis
 import Language.C.Analysis.SemRep
 import Language.C.Data.Ident

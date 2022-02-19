@@ -3,10 +3,8 @@
 
 module MachineSpec where
 
-import Language.C.Quote.GCC
-import Text.PrettyPrint.Mainland (prettyCompact)
-import Text.PrettyPrint.Mainland.Class (ppr)
 import System.FilePath
+import Text.RawString.QQ
 
 import CommandLine
 
@@ -23,15 +21,13 @@ getMachineSpec compiler = do
 	let
 		srcfilename = machinespec_name <.> "c"
 		exefilename = machinespec_name <.> "exe"
-	compileHereIO compiler ["-o",exefilename,srcfilename] srcfilename $
-		prettyCompact $ ppr machinespec_src
+	compileHereIO compiler ["-o",exefilename,srcfilename] srcfilename machinespec_src
 	(machinespec_s,"") <- runHereIO "." exefilename []
 	return $ read machinespec_s
 
 	where
-	incl_stdio = "#include <stdio.h>"
-	machinespec_src = [cunit|
-$esc:incl_stdio
+	machinespec_src = [r|
+#include <stdio.h>
 int main(void)
 {
     char* little = "Little";

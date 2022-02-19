@@ -5,7 +5,8 @@ module Parsing (
 	parseFile)
 	where
 
-import "language-c" Language.C (parseCFile,CDecl,pretty)
+import Language.C (parseCFile,CDecl,pretty)
+--import "language-c" Language.C (parseCFile,CDecl,pretty)
 import Language.C.System.GCC (newGCC)
 import Language.C.Analysis.SemRep hiding (Stmt,Expr)
 import Language.C.Analysis.DefTable (DefTable)
