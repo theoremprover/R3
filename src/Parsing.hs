@@ -19,12 +19,13 @@ import Language.C.Data.Node (lengthOfNode,NodeInfo,nodeInfo)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn,isSourcePos)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.State.Lazy
-import qualified Data.Map.Strict as ASTMap
 import Data.List (nub)
 import Text.PrettyPrint (render)
+import qualified Data.Map.Strict as ASTMap
 
 import GlobDecls
 import AST
+import qualified Data.Map.Strict as ASTMap
 import R3Monad
 import MachineSpec
 import Utils

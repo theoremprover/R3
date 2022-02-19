@@ -5,11 +5,14 @@ module Main where
 
 import System.IO (hSetBuffering,stdout,BufferMode(NoBuffering))
 import System.Exit
+import System.FilePath
 
 import MachineSpec
 import Parsing
 import R3Monad
 import DataTree
+import AST
+import qualified Data.Map.Strict as ASTMap
 
 function_name = "_fpmul_parts"
 file_name = "test.c"
@@ -30,6 +33,6 @@ mainR3 = do
 			liftIO $ putStrLn errmsg
 			return $ ExitFailure 1
 		Right ast -> do
-			Just body = ASTMap.lookup function_name ast
-			writeFile "function_name.html" $ genericToHTMLString ast
+			let Just fun_body = ASTMap.lookup function_name $ ASTMap.mapKeys nameIdent ast
+			liftIO $ writeFile (function_name <.> "html") $ genericToHTMLString fun_body
 			return ExitSuccess

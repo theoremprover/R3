@@ -3,13 +3,19 @@
 
 module AST where
 
-import Data.Generics
+import GHC.Generics
 import qualified Data.Map.Strict as ASTMap
+
+type ASTMap k v = ASTMap.Map k v
+
+data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic)
+instance Eq Ident where
+	ident1 == ident2 = nameIdent ident1 == nameIdent ident2 && idIdent ident1 == idIdent ident2
 
 data Loc =
 	Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } |
 	NoLoc String
-	deriving (Eq,Ord)
+	deriving (Eq,Ord,Generic)
 instance Show Loc where
 	show Loc{..} = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
 	show (NoLoc s) = s
@@ -28,7 +34,7 @@ data ZType =
 	ZUnhandled String
 	deriving (Show,Generic)
 
-type TranslUnit = ASTMap.Map Ident ExtDecl
+type TranslUnit = ASTMap Ident ExtDecl
 
 data VarDeclaration = VarDeclaration {
 	identVD      :: Ident,
@@ -36,10 +42,6 @@ data VarDeclaration = VarDeclaration {
 	typeVD       :: ZType,
 	locVD        :: Loc }
 	deriving (Show,Generic)
-
-data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic)
-instance Eq Ident where
-	ident1 == ident2 = nameIdent ident1 == nameIdent ident2 && idIdent ident1 == idIdent ident2
 
 -- AST contains variable declarations, each of them having either
 -- 1. maybe an initializer (i.e. a variable declaration), or
