@@ -5,14 +5,25 @@
 module DataTree (genericToHTMLString,genericToString,dataTreeToHTMLString,DataTree(..)) where
 
 import GHC.Generics
+-- use 
 import Language.C
 import Language.C.Data.Ident
 import Text.Html
 import Text.RawString.QQ
 
+{-
+{-# LANGUAGE DeriveGeneric #-}
+
+import GHC.Generics
+
+data G ... deriving (..,Generic)
+
+genericToHTMLString (G...) :: String
+genericToString (G..) :: String
+-}
+
 data DataTree = DataTree String [DataTree] | Leaf String deriving (Show)
 
---type Mode = Int
 data Mode = None | CollectList deriving Show
 
 class DataTreeNode f where
@@ -40,30 +51,16 @@ instance (Generic c,DataTreeNode (Rep c)) => DataTreeNode (K1 i c) where
 	dataTree mode (K1 c) = dataTree mode (from c)
 
 {-
-*DataTree> :t (undefined :: Rep [[Int]] p)
-(undefined :: Rep [[Int]] p)
-  :: D1
-       ('MetaData "[]" "GHC.Types" "ghc-prim" 'False)
-       (C1 ('MetaCons "[]" 'PrefixI 'False) U1
-        :+: C1
-              ('MetaCons ":" ('InfixI 'LeftAssociative 9) 'False)
-              (S1
-                 ('MetaSel
-                    'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy)
-                 (Rec0 [Int])
-               :*: S1
-                     ('MetaSel
-                        'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy)
-                     (Rec0 [[Int]])))
-       p
--}
-{-
 instance (DataTreeNode f,Constructor c) => DataTreeNode (M1 C c f) where
 	dataTree mode (M1 x) = case (mode,conName (undefined :: M1 C c f p)) of
 		(None,       ":")  -> [DataTree "[]" (dataTree CollectList x)]
 		(CollectList,":")  -> dataTree CollectList x
 		(CollectList,"[]") -> []
 		(_,conname)        -> [DataTree conname (dataTree None x)]
+
+instance (DataTreeNode f,Constructor c) => DataTreeNode (M1 C c f) where
+	dataTree mode (M1 x) = case (mode,conName (undefined :: M1 C c f p)) of
+		(_,conname) -> [DataTree conname (dataTree None x)]
 -}
 instance (DataTreeNode f,Constructor c) => DataTreeNode (M1 C c f) where
 	dataTree mode (M1 x) = case (mode,conName (undefined :: M1 C c f p)) of

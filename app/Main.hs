@@ -37,3 +37,39 @@ mainR3 = do
 			let Just fun_body = ASTMap.lookup function_name $ ASTMap.mapKeys nameIdent ast
 			liftIO $ writeFile (function_name <.> "html") $ genericToHTMLString fun_body
 			return ExitSuccess
+
+{-
+type S1 = M1 S
+type C1 = M1 C
+type D1 = M1 D
+
+*DataTree> :t (from [[1,2],[3,4]])
+(from [[1,2],[3,4]])
+  :: Num a =>
+     D1
+       ('MetaData "[]" "GHC.Types" "ghc-prim" 'False)
+       (C1 ('MetaCons "[]" 'PrefixI 'False) U1
+        :+: C1
+              ('MetaCons ":" ('InfixI 'LeftAssociative 9) 'False)
+              (S1
+                 ('MetaSel
+                    'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy)
+                 (Rec0 [a])
+               :*: S1
+                     ('MetaSel
+                        'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy)
+                     (Rec0 [[a]])))
+       x
+
+*DataTree> from [[1,2],[3,4]]
+M1 {unM1 =
+	R1 (M1 {unM1 =
+		M1 {unM1 =
+			K1 {unK1 =
+				[1,2]}}
+		:*:
+		M1 {unM1 =
+			K1 {unK1 =
+				[[3,4]]}}
+	})}
+-}

@@ -28,6 +28,8 @@ dependencies:
 - transformers
 - extra
 - raw-strings-qq
+# remove packages with
+# stack exec ghc-pkg unregister <package-name>
 
 library:
   source-dirs: src
