@@ -59,33 +59,34 @@ parseFile filepath = do
 					return $ Right ast
 
 globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit
-globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys ident2ast gObjs
+globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys cident2ident gObjs
 	where
-{-
-	decl2type :: DefTable -> CDecl -> Type
-	decl2type deftable decl = case runTrav_ $ do
-		withDefTable (const ((),deftable))
-		analyseTypeDecl decl
-		of
-		Left errs    -> error $ show errs
-		Right (ty,_) -> ty
--}
 
-	ni2loc :: NodeInfo → Loc
-	ni2loc ni = case posOf ni of
+	decl2vardecls :: CDecl -> [VarDeclaration]
+	decl2vardecls (CDecl declspecs triples ni) = for triples $ \ triple@(Just (),_,_) ->
+		case runTrav_ $ do
+			withDefTable (const ((),deftable))
+			ty <- analyseTypeDecl $ CDecl declspecs [triple] ni
+			return $ ty2zty [] ty
+			of
+			Left errs    -> error $ show errs
+			Right (ty,_) -> VarDeclaration ty
+
+	ni2loc :: (CNode n) => n → Loc
+	ni2loc n = let ni = nodeInfo n in case posOf ni of
 		pos | isSourcePos pos → Loc (posFile pos) (posRow pos) (posColumn pos) (fromJust $ lengthOfNode ni)
 		other                 → NoLoc $ show other
 
-	ident2ast :: CIdent.Ident → Ident
-	ident2ast (CIdent.Ident name i ni) = Ident name i (ni2loc ni)
+	cident2ident :: CIdent.Ident → Ident
+	cident2ident (CIdent.Ident name i ni) = Ident name i (ni2loc ni)
 
-	ty2ast :: Attributes → Type → ZType
-	ty2ast attrs ty = case ty of
+	ty2zty :: Attributes → Type → ZType
+	ty2zty attrs ty = case ty of
 		DirectType tyname _ tyattrs → case tyname of
 			TyIntegral intty → case (intty,modes) of
-				(TyChar,[])     → ZInt 8 True
-				(TySChar,[])    → ZInt 8 False
-				(TyUChar,[])    → ZInt 8 True
+				(TyChar,[])     → ZInt  8 True
+				(TySChar,[])    → ZInt  8 False
+				(TyUChar,[])    → ZInt  8 True
 				(TyShort,[])    → ZInt 16 False
 				(TyUShort,[])   → ZInt 16 True
 				(TyInt,[])      → ZInt intSize False
@@ -98,14 +99,14 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 				(TyULong,[])    → ZInt longSize True
 				(TyLLong,[])    → ZInt longLongSize False
 				(TyULLong,[])   → ZInt longLongSize True
-				other           → error $ "ty2ast " ++ show other ++ " not implemented!"
+				other           → error $ "ty2zty " ++ show other ++ " not implemented!"
 			TyFloating floatty → case (floatty,modes) of
-				(TyFloat,[])     → ZFloat 8 24
-				(TyFloat,["SF"]) → ZFloat 8 24
-				(TyFloat,["DF"]) → ZFloat 11 53
-				(TyDouble,[])    → ZFloat 11 53
+				(TyFloat,[])     → ZFloat  8  24
+				(TyFloat,["SF"]) → ZFloat  8  24
+				(TyFloat,["DF"]) → ZFloat 11  53
+				(TyDouble,[])    → ZFloat 11  53
 				(TyLDouble,[])   → ZFloat 15 113
-				other            → error $ "ty2ast " ++ show other ++ " not implemented!"
+				other            → error $ "ty2zty " ++ show other ++ " not implemented!"
 			TyVoid             → ZUnit
 			TyEnum enumtyperef → resolve_sueref enumtyperef
 			TyComp comptyperef → resolve_sueref comptyperef
@@ -117,10 +118,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 			resolve_sueref hassueref = case ASTMap.lookup sueref gTags of
 				Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
 				Just (CompDef (CompType _ comptykind memberdecls attrs ni)) →
-					ZCompound (compkind2comptype comptykind) (map (decl2ast ni) memberdecls)
+					ZCompound (compkind2comptype comptykind) (map (decl2vardecl ni) memberdecls)
 				Just (EnumDef (EnumType _ enumerators attrs ni)) →
 					ZEnum $ for enumerators $ \ (Enumerator ident expr _ ni) →
-						(ident2ast ident,eval_const_expr expr)
+						(cident2ident ident,eval_const_expr expr)
 				where
 				sueref = sueRef hassueref
 				compkind2comptype StructTag = Struct
@@ -131,33 +132,31 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 				Attr (CIdent.Ident "fardata" _ _) _ _                             → []
 				attr → error $ "mode: unknown attr " ++ show attr
 
-		ArrayType elem_ty arraysize _ _ → ZArray (ty2ast [] elem_ty) $ case arraysize of
+		ArrayType elem_ty arraysize _ _ → ZArray (ty2zty [] elem_ty) $ case arraysize of
 			ArraySize _ size   → Just $ eval_const_expr size
 			UnknownArraySize _ → Nothing
 
-		PtrType target_ty _ _ → ZPtr $ ty2ast [] target_ty
+		PtrType target_ty _ _ → ZPtr $ ty2zty [] target_ty
 
 		FunctionType (FunType target_ty paramdecls is_variadic) _ →
-			ZFun (ty2ast [] target_ty) is_variadic $ map ((ty2ast []).declType) paramdecls
+			ZFun (ty2zty [] target_ty) is_variadic $ map ((ty2zty []).declType) paramdecls
 
-		TypeDefType (TypeDefRef _ innerty _) _ attribs → ty2ast (attribs++attrs) innerty
+		TypeDefType (TypeDefRef _ innerty _) _ attribs → ty2zty (attribs++attrs) innerty
 
-		other → error $ "ty2ast " ++ show other ++ " not implemented!"
+		other → error $ "ty2zty " ++ show other ++ " not implemented!"
 
-	decl2ast :: (Declaration d) => NodeInfo → d → VarDeclaration
-	decl2ast ni decl = VarDeclaration (ident2ast ident) ((render.pretty) ty) (ty2ast attrs ty) (ni2loc ni)
+	decl2vardecl :: (Declaration d) => NodeInfo → d → VarDeclaration
+	decl2vardecl ni decl = VarDeclaration (cident2ident ident) ((render.pretty) ty) (ty2zty attrs ty) (ni2loc ni)
 		where
 		VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty = getVarDecl decl
 
 	eval_const_expr :: CExpr -> Integer
 	eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
 
---data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
 	identdecl2extdecl :: IdentDecl → ExtDecl
-
 	identdecl2extdecl identdecl = ExtDecl vardeclast body loc
 		where
-		vardeclast = decl2ast ni identdecl
+		vardeclast = decl2vardecl ni identdecl
 		ni = nodeInfo identdecl
 		loc = ni2loc ni
 		body = case identdecl of
@@ -170,20 +169,40 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 				initializer2expr (CInitList initlist _) = Comp idexprs (typeVD vardeclast) loc where
 					idexprs = for initlist $ \ ([],initializer) → initializer2expr initializer
 
+	cbi2ast :: CBlockItem -> Stmt
+	cbi2ast (CBlockStmt stmt) = stmt2ast stmt
+	cbi2ast (CBlockDecl decl) = decl2ast decl
+
+	decl2ast :: CDecl -> Stmt
+	decl2ast cdecl =
+
 	stmt2ast :: CStat → Stmt
-	stmt2ast (CCompound _ cbis ni) = Compound (map stmt2ast cbis) (ni2loc ni)
-	stmt2ast (CLabel ident stmt _ ni) = Label (ident2ast ident) (stmt2ast stmt) (ni2loc ni)
+	stmt2ast (CCompound _ cbis ni) = Compound (map cbi2ast cbis) (ni2loc ni)
+	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (stmt2ast stmt) (ni2loc ni)
 	stmt2ast (CIf expr then_stmt mb_else_stmt ni) =
 		IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt (ni2loc ni) where
 		else_stmt = case mb_else_stmt of
-			Nothing     → Compound [] (ni2loc $ nodeInfo then_stmt)
+			Nothing     → Compound [] (ni2loc then_stmt)
 			Just e_stmt → stmt2ast e_stmt
 	stmt2ast (CExpr (Just expr) ni) = ExprStmt (expr2ast expr) (ni2loc ni)
-	stmt2ast (CWhile cond body False ni) = Loop (expr2ast cond) (stmt2ast body) (ni2loc ni)
+	stmt2ast (CWhile cond body False ni) = While (expr2ast cond) (stmt2ast body) (ni2loc ni)
 	stmt2ast (CWhile cond body True ni) = Compound [body',loop] (ni2loc ni) where
 		body' = stmt2ast body
 		loop = Loop (expr2ast cond) body' (ni2loc ni)
-	stmt2ast (CFor mb_expr_or_decl mb_cond mb_inc body) =
+	stmt2ast (CFor mb_expr_or_decl (Just cond) mb_inc body ni) = Compound [ini,loop] (ni2loc ni) where
+		ini = case mb_expr_or_decl of
+			Left (Just ini_expr) → ExprStmt (expr2ast ini_expr) (ni2loc ini_expr)
+			Right cdecl          → ExprStmt () (ni2loc cdecl) where
+				(ty2zty $ decl2type cdecl)
+		loop = While (expr2ast mb_cond) body' (ni2loc ni)
+		body' = Compound [stmt2ast body,inc] (ni2loc body)
+		inc = case mb_inc of
+			Nothing       → Compound [] (ni2loc mb_inc)
+			Just inc_expr → ExprStmt (expr2ast inc_expr) (ni2loc inc_expr)
+	stmt2ast (CSwitch expr (CCompound [] cbis _) ni) =
+
+	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
 	expr2ast :: CExpr → Expr
-	expr2ast expr = Var (Ident "DUMMY" 0 (ni2loc $ nodeInfo expr)) ZUnit (ni2loc $ nodeInfo expr)
+	expr2ast expr = Var (Ident "DUMMY" 0 (ni2loc expr)) ZUnit (ni2loc expr)
+	expr2ast other = error $ "expr2ast " ++ show other ++ " not implemented"

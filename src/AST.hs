@@ -95,11 +95,12 @@ data Const =
 	deriving (Show,Generic)
 
 data Stmt =
+	Decl VarDeclaration Loc |
 	Label Ident Loc |
 	Compound [Stmt] Loc |
 	IfThenElse Expr Stmt Stmt Loc |
 	ExprStmt Expr Loc |
-	Loop Expr Stmt Loc |   -- This is while loop. do-while and for loops are transcribed into this form.
+	While Expr Stmt Loc |
 	Return (Maybe Expr) Loc |
 	Goto Ident Loc
 	deriving (Show,Generic)
