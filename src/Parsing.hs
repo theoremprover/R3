@@ -171,7 +171,19 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 					idexprs = for initlist $ \ ([],initializer) → initializer2expr initializer
 
 	stmt2ast :: CStat → Stmt
-	stmt2ast cstmt = ExprStmt (Var (Ident "DUMMY" 0 (ni2loc $ nodeInfo cstmt)) ZUnit (ni2loc $ nodeInfo cstmt)) (ni2loc $ nodeInfo cstmt)  --DUMMY
+	stmt2ast (CCompound _ cbis ni) = Compound (map stmt2ast cbis) (ni2loc ni)
+	stmt2ast (CLabel ident stmt _ ni) = Label (ident2ast ident) (stmt2ast stmt) (ni2loc ni)
+	stmt2ast (CIf expr then_stmt mb_else_stmt ni) =
+		IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt (ni2loc ni) where
+		else_stmt = case mb_else_stmt of
+			Nothing     → Compound [] (ni2loc $ nodeInfo then_stmt)
+			Just e_stmt → stmt2ast e_stmt
+	stmt2ast (CExpr (Just expr) ni) = ExprStmt (expr2ast expr) (ni2loc ni)
+	stmt2ast (CWhile cond body False ni) = Loop (expr2ast cond) (stmt2ast body) (ni2loc ni)
+	stmt2ast (CWhile cond body True ni) = Compound [body',loop] (ni2loc ni) where
+		body' = stmt2ast body
+		loop = Loop (expr2ast cond) body' (ni2loc ni)
+	stmt2ast (CFor mb_expr_or_decl mb_cond mb_inc body) =
 
 	expr2ast :: CExpr → Expr
 	expr2ast expr = Var (Ident "DUMMY" 0 (ni2loc $ nodeInfo expr)) ZUnit (ni2loc $ nodeInfo expr)

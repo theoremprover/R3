@@ -95,7 +95,7 @@ data Const =
 	deriving (Show,Generic)
 
 data Stmt =
-	Label String Loc |
+	Label Ident Loc |
 	Compound [Stmt] Loc |
 	IfThenElse Expr Stmt Stmt Loc |
 	ExprStmt Expr Loc |

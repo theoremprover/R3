@@ -2,10 +2,9 @@
 	FlexibleContexts,ScopedTypeVariables,UndecidableInstances,QuasiQuotes #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
-module DataTree (genericToHTMLString,genericToString,dataTreeToHTMLString,DataTree(..)) where
+module DataTree (genericToHTMLString,genericToString) where
 
 import GHC.Generics
--- use 
 import Language.C
 import Language.C.Data.Ident
 import Text.Html
@@ -16,10 +15,10 @@ import Text.RawString.QQ
 
 import GHC.Generics
 
-data G ... deriving (..,Generic)
+data G = ... deriving (..,Generic)
 
-genericToHTMLString (G...) :: String
-genericToString (G..) :: String
+genericToHTMLString :: G -> String
+genericToString :: G -> String
 -}
 
 data DataTree = DataTree String [DataTree] | Leaf String deriving (Show)

@@ -13,9 +13,6 @@ import Control.Monad
 import Data.Map.Strict as Map
 import Text.PrettyPrint
 
---import Prettyprinter
---import Prettyprinter.Render.String
-
 import AST
 
 showMapTable :: (k -> String) -> (v -> String) -> Map.Map k v -> Html
