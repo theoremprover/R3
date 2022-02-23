@@ -95,12 +95,23 @@ data Const =
 	deriving (Show,Generic)
 
 data Stmt =
-	Decl VarDeclaration Loc |
-	Label Ident Loc |
+	Decls [VarDeclaration] Loc |
+	Label Ident Stmt Loc |
 	Compound [Stmt] Loc |
 	IfThenElse Expr Stmt Stmt Loc |
 	ExprStmt Expr Loc |
 	While Expr Stmt Loc |
 	Return (Maybe Expr) Loc |
+	Continue Loc |
 	Goto Ident Loc
 	deriving (Show,Generic)
+
+{-
+	Second step:
+	1. expand vardecls into multiple DECLs
+	2. expand CondExprs
+	3. dissect expressions with side effects,
+	=> Expr no sideeffects
+
+	Output is a list of Computations (Stmt,Expr,Stmt)
+-}

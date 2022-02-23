@@ -202,7 +202,8 @@ analyseTypeDecl (CDecl declspecs declrs node)
     | [(Just declr,_{-Nothing-},Nothing)] <- declrs = analyseTyDeclr declr
     | otherwise = astError node "Bad declarator for type declaration"
     where
-    analyseTyDeclr (CDeclr Nothing derived_declrs Nothing attrs _declrnode)
+-- CHANGED IN ORDER TO SWALLOW Idents AS WELL:
+    analyseTyDeclr (CDeclr _{-Nothing-} derived_declrs Nothing attrs _declrnode)
         | (not (null storagespec) || not (null funspecs) || not (null alignspecs)) =
             astError node "storage, function or alignment specifier for type declaration"
         | otherwise                          =
