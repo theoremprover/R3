@@ -43,13 +43,6 @@ data ZType =
 
 type TranslUnit = ASTMap Ident ExtDecl
 
-data VarDeclaration = VarDeclaration {
-	identVD      :: Ident,
-	sourceTypeVD :: String,
-	typeVD       :: ZType,
-	locVD        :: Loc }
-	deriving (Show,Generic)
-
 -- AST contains variable declarations, each of them having either
 -- 1. maybe an initializer (i.e. a variable declaration), or
 -- 2. a statement as body of the defined function
@@ -85,6 +78,13 @@ data BinaryOp =
 	Mul | Div | Add | Sub | Rmd | Shl | Shr |
 	Less | Equals | LessEq | Greater | GreaterEq |
 	And | Or | BitAnd | BitOr | BitXOr
+	deriving (Show,Generic)
+
+data VarDeclaration = VarDeclaration {
+	identVD      :: Ident,
+	sourceTypeVD :: String,
+	typeVD       :: ZType,
+	locVD        :: Loc }
 	deriving (Show,Generic)
 
 data Const =

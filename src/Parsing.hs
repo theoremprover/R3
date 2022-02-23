@@ -8,7 +8,7 @@ module Parsing (
 import Language.C (parseCFile,CDecl,pretty)
 --import "language-c" Language.C (parseCFile,CDecl,pretty)
 import Language.C.System.GCC (newGCC)
-import Language.C.Analysis.SemRep hiding (Stmt,Expr)
+import Language.C.Analysis.SemRep as SemRep hiding (Stmt,Expr)
 import Language.C.Analysis.DefTable (DefTable)
 import Language.C.Analysis.DeclAnalysis (analyseTypeDecl)
 import Language.C.Analysis.AstAnalysis (analyseAST)
@@ -16,7 +16,7 @@ import Language.C.Analysis.TravMonad (runTrav_,getDefTable,withDefTable)
 import qualified Language.C.Data.Ident as CIdent
 import Language.C.Syntax.AST
 import Language.C.Syntax.Constants (getCInteger)
-import Language.C.Data.Node (lengthOfNode,NodeInfo,nodeInfo)
+import Language.C.Data.Node (lengthOfNode,NodeInfo,nodeInfo,CNode)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn,isSourcePos)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.State.Lazy
@@ -62,15 +62,18 @@ globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit
 globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys cident2ident gObjs
 	where
 
-	decl2vardecls :: CDecl -> [VarDeclaration]
-	decl2vardecls (CDecl declspecs triples ni) = for triples $ \ triple@(Just (),_,_) ->
-		case runTrav_ $ do
-			withDefTable (const ((),deftable))
-			ty <- analyseTypeDecl $ CDecl declspecs [triple] ni
-			return $ ty2zty [] ty
-			of
-			Left errs    -> error $ show errs
-			Right (ty,_) -> VarDeclaration ty
+	decl2stmts :: CDecl -> [Stmt]
+	decl2stmts (CDecl declspecs triples _) = for triples $
+		\ (Just cdeclr@(CDeclr (Just cident) _ _ _ ni),mb_init,mb_expr) ->
+			case runTrav_ $ do
+				withDefTable (const ((),deftable))
+				ty <- analyseTypeDecl $ CDecl declspecs [(Just cdeclr,mb_init,mb_expr)] ni
+				return (cident,ty,ni)
+				of
+				Left errs                -> error $ show errs
+				Right ((cident,ty,ni),_) -> AST.Decl
+					(VarDeclaration (cident2ident cident) ((render.pretty) ty) (ty2zty [] ty) (ni2loc ni))
+					(ni2loc ni)
 
 	ni2loc :: (CNode n) => n → Loc
 	ni2loc n = let ni = nodeInfo n in case posOf ni of
@@ -161,7 +164,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		loc = ni2loc ni
 		body = case identdecl of
 			FunctionDef (FunDef vardecl stmt _)   → Right $ stmt2ast stmt
-			Declaration (Decl vardecl _)          → Left Nothing
+			Declaration (SemRep.Decl vardecl _)   → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast expr
 			ObjectDef (ObjDef vardecl mb_init _)  → Left $ fmap initializer2expr mb_init where
 				initializer2expr :: CInitializer NodeInfo → Expr
@@ -169,15 +172,12 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 				initializer2expr (CInitList initlist _) = Comp idexprs (typeVD vardeclast) loc where
 					idexprs = for initlist $ \ ([],initializer) → initializer2expr initializer
 
-	cbi2ast :: CBlockItem -> Stmt
-	cbi2ast (CBlockStmt stmt) = stmt2ast stmt
-	cbi2ast (CBlockDecl decl) = decl2ast decl
-
-	decl2ast :: CDecl -> Stmt
-	decl2ast cdecl =
+	cbi2ast :: CBlockItem -> [Stmt]
+	cbi2ast (CBlockStmt stmt) = [stmt2ast stmt]
+	cbi2ast (CBlockDecl decl) = decl2stmts decl
 
 	stmt2ast :: CStat → Stmt
-	stmt2ast (CCompound _ cbis ni) = Compound (map cbi2ast cbis) (ni2loc ni)
+	stmt2ast (CCompound _ cbis ni) = Compound (concatMap cbi2ast cbis) (ni2loc ni)
 	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (stmt2ast stmt) (ni2loc ni)
 	stmt2ast (CIf expr then_stmt mb_else_stmt ni) =
 		IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt (ni2loc ni) where
@@ -185,21 +185,20 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 			Nothing     → Compound [] (ni2loc then_stmt)
 			Just e_stmt → stmt2ast e_stmt
 	stmt2ast (CExpr (Just expr) ni) = ExprStmt (expr2ast expr) (ni2loc ni)
-	stmt2ast (CWhile cond body False ni) = While (expr2ast cond) (stmt2ast body) (ni2loc ni)
-	stmt2ast (CWhile cond body True ni) = Compound [body',loop] (ni2loc ni) where
+	stmt2ast (CWhile cond body False ni) = [ While (expr2ast cond) (stmt2ast body) (ni2loc ni)
+	stmt2ast (CWhile cond body True ni) = [ Compound [body',loop] (ni2loc ni) where
 		body' = stmt2ast body
-		loop = Loop (expr2ast cond) body' (ni2loc ni)
+		loop = While (expr2ast cond) body' (ni2loc ni)
 	stmt2ast (CFor mb_expr_or_decl (Just cond) mb_inc body ni) = Compound [ini,loop] (ni2loc ni) where
 		ini = case mb_expr_or_decl of
-			Left (Just ini_expr) → ExprStmt (expr2ast ini_expr) (ni2loc ini_expr)
-			Right cdecl          → ExprStmt () (ni2loc cdecl) where
-				(ty2zty $ decl2type cdecl)
+			Left (Just ini_expr) → [ ExprStmt (expr2ast ini_expr) (ni2loc ini_expr) ]
+			Right cdecl          → decl2stmts cdecl
 		loop = While (expr2ast mb_cond) body' (ni2loc ni)
 		body' = Compound [stmt2ast body,inc] (ni2loc body)
 		inc = case mb_inc of
 			Nothing       → Compound [] (ni2loc mb_inc)
 			Just inc_expr → ExprStmt (expr2ast inc_expr) (ni2loc inc_expr)
-	stmt2ast (CSwitch expr (CCompound [] cbis _) ni) =
+--	stmt2ast (CSwitch expr (CCompound [] cbis _) ni) =
 
 	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
