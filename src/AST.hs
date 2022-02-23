@@ -6,12 +6,12 @@ module AST where
 import GHC.Generics
 import qualified Data.Map.Strict as ASTMap
 
-
+{-
 data Te = Te [Te] | TeInt Int deriving (Show,Generic)
 testTe = Te [ Te [TeInt 1,TeInt 2], Te [ TeInt 3, TeInt 4 ]]
 
 testG = [[1,2,3],[4,5,6]] :: [[Int]]
-
+-}
 
 type ASTMap k v = ASTMap.Map k v
 
@@ -54,7 +54,7 @@ data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
 data Expr =
 	StmtExpr Stmt ZType Loc |
 	Assign Expr Expr ZType Loc |
-	Cast ZType Expr ZType Loc |
+	Cast Expr ZType Loc |
 	Call Expr [Expr] ZType Loc |
 	Unary UnaryOp Expr ZType Loc |
 	Binary BinaryOp Expr Expr ZType Loc |
@@ -63,13 +63,24 @@ data Expr =
 	Member Expr Ident Bool ZType Loc |
 	Var Ident ZType Loc |
 	Constant Const ZType Loc |
-{-
-	int a[3] = { 1,2,3 };
-//	enum X = { ABC=0,DEF=1 };
-	y = { .first=1, 2, .sub={ 'a', 3 }, .last=7 };
--}
 	Comp [Expr] ZType Loc
 	deriving (Show,Generic)
+
+class Typed a where
+	typeOf :: a -> ZType
+instance Typed Expr where
+	typeOf (StmtExpr _ ty _) = ty
+	typeOf (Assign _ _ ty _) = ty
+	typeOf (Cast _ ty _) = ty
+	typeOf (Call _ _ ty _) = ty
+	typeOf (Unary _ _ ty _) = ty
+	typeOf (Binary _ _ _ ty _) = ty
+	typeOf (CondExpr _ _ _ ty _) = ty
+	typeOf (Index _ _ ty _) = ty
+	typeOf (Member _ _ _ ty _) = ty
+	typeOf (Var _ ty _) = ty
+	typeOf (Constant _ ty _) = ty
+	typeOf (Comp _ ty _) = ty
 
 data UnaryOp = AddrOf | DerefOp | Neg | Exor | Not
 	deriving (Show,Generic)
@@ -109,7 +120,7 @@ data Stmt =
 {-
 	Second step:
 	1. expand vardecls into multiple DECLs
-	2. expand CondExprs
+	2. expand CondExprs to IfThenElse
 	3. dissect expressions with side effects,
 	=> Expr no sideeffects
 

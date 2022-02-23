@@ -62,6 +62,8 @@ globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit
 globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys cident2ident gObjs
 	where
 
+	intTy = ZInt intSize True
+
 	decl2stmt :: CDecl -> Stmt
 	decl2stmt (CDecl declspecs triples ni) = Decls vardecls (ni2loc ni)
 		where
@@ -206,6 +208,20 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 
 	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
-	expr2ast :: CExpr → Expr
-	expr2ast expr = Var (Ident "DUMMY" 0 (ni2loc expr)) ZUnit (ni2loc expr)
-	expr2ast other = error $ "expr2ast " ++ show other ++ " not implemented"
+	expr2ast :: Maybe ZType → CExpr → Expr
+	expr2ast mb_𝜏 cexpr = case mb_𝜏 of
+		Just target_ty | target_ty /= typeOf expr → Cast expr target_ty (ni2loc expr)
+		_                                         → expr
+
+		where
+
+		expr = to_ast cexpr
+
+		to_ast (CAssign ass_op lexpr rexpr ni) = Assign lexpr' expr' (typeOf lexpr') (ni2loc ni) where
+			lexpr' = expr2ast mb_𝜏 lexpr
+			rexpr' = expr2ast mb_𝜏 rexpr
+			expr' = case ass_op of
+				CAssignOp → rexpr'
+				other_op  → Binary (assop2binop other_op) lexpr' rexpr' zty (ni2loc rexpr)
+
+		to_ast other = error $ "to_ast " ++ show other ++ " not implemented"
