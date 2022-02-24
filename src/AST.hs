@@ -52,6 +52,7 @@ data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
 	deriving (Show,Generic)
 
 data Expr =
+	CondExpr Expr Expr Expr ZType Loc |
 	StmtExpr Stmt ZType Loc |
 	Assign Expr Expr ZType Loc |
 	Cast Expr ZType Loc |
@@ -69,6 +70,7 @@ data Expr =
 class Typed a where
 	typeOf :: a -> ZType
 instance Typed Expr where
+	typeOf (CondExpr _ _ _ ty _) = ty
 	typeOf (StmtExpr _ ty _) = ty
 	typeOf (Assign _ _ ty _) = ty
 	typeOf (Cast _ ty _) = ty

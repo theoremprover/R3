@@ -18,6 +18,7 @@ import Language.C.Syntax.AST
 import Language.C.Syntax.Constants (getCInteger)
 import Language.C.Data.Node (lengthOfNode,NodeInfo,nodeInfo,CNode)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn,isSourcePos)
+import Language.C.Syntax.Ops (assignBinop)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.State.Lazy
 import Data.List (nub)
@@ -204,7 +205,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 	stmt2ast (CCont ni) = Continue (ni2loc ni)
 	stmt2ast (CBreak ni) = Break (ni2loc ni)
 	stmt2ast (CReturn mb_expr ni) = Return (fmap expr2ast mb_expr) (ni2loc ni)
-	stmt2ast (CSwitch expr (CCompound [] cbis _) ni) =
+--	stmt2ast (CSwitch expr (CCompound [] cbis _) ni) =
 
 	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
@@ -220,8 +221,20 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		to_ast (CAssign ass_op lexpr rexpr ni) = Assign lexpr' expr' (typeOf lexpr') (ni2loc ni) where
 			lexpr' = expr2ast mb_𝜏 lexpr
 			rexpr' = expr2ast mb_𝜏 rexpr
-			expr' = case ass_op of
+			expr'  = case ass_op of
 				CAssignOp → rexpr'
-				other_op  → Binary (assop2binop other_op) lexpr' rexpr' zty (ni2loc rexpr)
-
+				other_op  → Binary binop lexpr' rexpr' zty (ni2loc rexpr) where
+					Just binop = lookup ass_op [
+						(CMulAssOp,Mul),(CDivAssOp,Div),(CRmdAssOp,Rmd),(CAddAssOp,Add),(CSubAssOp,Sub),
+						(CShlAssOp,Shl),(CShrAssOp,Shr),(CAndAssOp,BitAnd),(CXorAssOp,BitXOr),(COrAssOp,BitOr) ]
+		to_ast (CCond cond (Just then_expr) else_expr ni) =
+			CondExpr (expr2ast cond) (expr2ast then_expr) (expr2ast else_expr) (ni2loc ni)
+		to_ast (CCast cdecl expr ni) = Cast (expr2ast expr) (typeVD vardecl) (ni2loc ni) where
+			Decls [vardecl] _ = decl2stmt cdecl
+		to_ast (CBinary binop expr1 expr2 ni) = Binary binop' (expr2ast expr1) (expr2ast expr2) (ni2loc ni) where
+			Just binop' = lookup binop [
+				(CMulOp,Mul),(CDivOp,Div),(CRmdOp,Rmd),(CAddOp,Add),(CSubOp,Sub),(CShlOp,Shl),
+				(CShrOp,Shr),(CLeOp,LessEq),(CGrOp,Greater),(CLeqOp,LessEq),(CGeqOp,GreaterEq),(CEqOp,Equals),(CNeqOp,),
+				(CAndOp,),(CXorOp,),(COrOp,),(CLndOp,),(CLorOp,) ]
+		to_ast (CUnary unop expr ni) = Unary unop' (expr2ast expr) (ni2loc ni)
 		to_ast other = error $ "to_ast " ++ show other ++ " not implemented"
