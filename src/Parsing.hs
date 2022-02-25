@@ -237,4 +237,5 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 				(CShrOp,Shr),(CLeOp,LessEq),(CGrOp,Greater),(CLeqOp,LessEq),(CGeqOp,GreaterEq),(CEqOp,Equals),(CNeqOp,),
 				(CAndOp,),(CXorOp,),(COrOp,),(CLndOp,),(CLorOp,) ]
 		to_ast (CUnary unop expr ni) = Unary unop' (expr2ast expr) (ni2loc ni)
+		to_ast (CIndex arr index ni) = Index (expr2ast ? arr) (expr2ast intTy index) (ni2loc ni)
 		to_ast other = error $ "to_ast " ++ show other ++ " not implemented"
