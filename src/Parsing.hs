@@ -92,13 +92,13 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 
 	getCDeclType :: CDecl -> Type
 	getCDeclType cdecl = case runTrav_ (withDefTable (const ((),deftable)) >> analyseTypeDecl cdecl) of
-		Left errs    -> error $ show errs
-		Right (ty,_) -> ty
+		Left errs    → error $ show errs
+		Right (ty,_) → ty
 
 	decl2stmt :: CDecl -> Stmt TypeAttrs
 	decl2stmt (CDecl declspecs triples ni) = Decls vardecls (ni2loc ni)
 		where
-		vardecls = for triples $ \ (Just cdeclr@(CDeclr (Just cident) _ _ _ ni),mb_init,mb_expr) ->
+		vardecls = for triples $ \ (Just cdeclr@(CDeclr (Just cident) _ _ _ ni),mb_init,mb_expr) →
 			let ty = getCDeclType $ CDecl declspecs [(Just cdeclr,mb_init,mb_expr)] ni in
 				VarDeclaration (cident2ident cident) ((render.pretty) ty) (Just (ty,[])) (ni2loc ni)
 {-
@@ -194,10 +194,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		ni = nodeInfo identdecl
 		loc = ni2loc ni
 		body = case identdecl of
-			FunctionDef (FunDef vardecl stmt _)   → Right $ stmt2ast stmt
-			SemRep.Declaration (SemRep.Decl vardecl _)   → Left Nothing
-			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast expr
-			ObjectDef (ObjDef vardecl mb_init _)  → Left $ fmap initializer2expr mb_init where
+			FunctionDef (FunDef vardecl stmt _)        → Right $ stmt2ast stmt
+			SemRep.Declaration (SemRep.Decl vardecl _) → Left Nothing
+			EnumeratorDef (Enumerator _ expr _ _)      → Left $ Just $ expr2ast expr
+			ObjectDef (ObjDef vardecl mb_init _)       → Left $ fmap initializer2expr mb_init where
 				initializer2expr :: CInitializer NodeInfo → Expr TypeAttrs
 				initializer2expr (CInitExpr expr _)     = expr2ast expr
 				initializer2expr (CInitList initlist _) = Comp idexprs (typeVD vardeclast) loc where
@@ -257,14 +257,14 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 	expr2ast (CUnary unop expr ni) = Unary unop' (expr2ast expr) Nothing (ni2loc ni) where
 		Just unop' = lookup unop [
 			(CPreIncOp,PreInc),(CPreDecOp,PreDec),(CPostIncOp,PostInc),(CPostDecOp,PostDec),(CAdrOp,AddrOf),
-			(CIndOp,Deref),(CPlusOp,Plus),(CMinOp,Minus),(CCompOp,ExOr),(CNegOp,Not) ] :: Maybe UnaryOp
+			(CIndOp,Deref),(CPlusOp,Plus),(CMinOp,Minus),(CCompOp,ExOr),(CNegOp,Not) ]
 	expr2ast (CIndex arr index ni) = Index (expr2ast arr) (expr2ast index) Nothing (ni2loc ni)
 	expr2ast (CConst const) = Constant const' Nothing (ni2loc ni) where
 		(const',ni) = case const of
-			CIntConst cinteger ni     -> (IntConst (getCInteger cinteger),ni)
-			CCharConst cchar ni       -> (CharConst (read $ getCChar cchar),ni)
-			CFloatConst (CFloat f) ni -> (FloatConst (read f),ni)
-			CStrConst cstring ni      -> (StringConst $ (getCString cstring),ni)
+			CIntConst cinteger ni     → (IntConst (getCInteger cinteger),ni)
+			CCharConst cchar ni       → (CharConst (read $ getCChar cchar),ni)
+			CFloatConst (CFloat f) ni → (FloatConst (read f),ni)
+			CStrConst cstring ni      → (StringConst $ (getCString cstring),ni)
 	expr2ast (CMember expr ident is_ptr ni) = Member (expr2ast expr) (cident2ident ident) is_ptr Nothing (ni2loc ni)
 	expr2ast (CVar ident ni) = Var (cident2ident ident) Nothing (ni2loc ni)
 	expr2ast (CCall fun args ni) = Call (expr2ast fun) (map expr2ast args) Nothing (ni2loc ni)
