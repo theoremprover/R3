@@ -28,7 +28,7 @@ main = do
 
 mainR3 :: R3 ExitCode
 mainR3 = do
-	liftIO $ writeFile ("test.html") $ genericToHTMLString testG
+--	liftIO $ writeFile ("test.html") $ genericToHTMLString testG
 	parseFile file_name >>= \case
 		Left errmsg -> do
 			liftIO $ putStrLn errmsg

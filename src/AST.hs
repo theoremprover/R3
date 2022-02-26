@@ -35,68 +35,65 @@ data ZType =
 	ZFloat Int Int | -- ZFloat exp_bits significand_bits  (significand_bits includes the hidden bit, but excludes sign bit)
 	ZArray ZType (Maybe Integer) |
 	ZPtr ZType |
-	ZCompound CompoundType [VarDeclaration] |
+	ZCompound CompoundType [VarDeclaration ZType] |
 	ZEnum [(Ident,Integer)] |
 	ZFun ZType {-isVariadic::-}Bool [ZType] |
 	ZUnhandled String
 	deriving (Show,Generic)
 
-type TranslUnit = ASTMap Ident ExtDecl
+type TranslUnit a = ASTMap Ident (ExtDecl a)
 
 -- AST contains variable declarations, each of them having either
 -- 1. maybe an initializer (i.e. a variable declaration), or
 -- 2. a statement as body of the defined function
 --    (the arguments and their types are in the type of the function identifier)
 
-data ExtDecl = ExtDecl VarDeclaration (Either (Maybe Expr) Stmt) Loc
+data ExtDecl a = ExtDecl (VarDeclaration a) (Either (Maybe (Expr a)) (Stmt a)) Loc
 	deriving (Show,Generic)
 
-data Expr =
-	CondExpr Expr Expr Expr ZType Loc |
-	StmtExpr Stmt ZType Loc |
-	Assign Expr Expr ZType Loc |
-	Cast Expr ZType Loc |
-	Call Expr [Expr] ZType Loc |
-	Unary UnaryOp Expr ZType Loc |
-	Binary BinaryOp Expr Expr ZType Loc |
-	CondExpr Expr Expr Expr ZType Loc |
-	Index Expr Expr ZType Loc |
-	Member Expr Ident Bool ZType Loc |
-	Var Ident ZType Loc |
-	Constant Const ZType Loc |
-	Comp [Expr] ZType Loc
+data Expr a =
+	StmtExpr (Stmt a) a Loc |
+	Assign (Expr a) (Expr a) a Loc |
+	Cast (Expr a) a Loc |
+	Call (Expr a) [Expr a] a Loc |
+	Unary UnaryOp (Expr a) a Loc |
+	Binary BinaryOp (Expr a) (Expr a) a Loc |
+	CondExpr (Expr a) (Expr a) (Expr a) a Loc |
+	Index (Expr a) (Expr a) a Loc |
+	Member (Expr a) Ident Bool a Loc |
+	Var Ident a Loc |
+	Constant Const a Loc |
+	Comp [Expr a] a Loc
 	deriving (Show,Generic)
 
-class Typed a where
-	typeOf :: a -> ZType
-instance Typed Expr where
-	typeOf (CondExpr _ _ _ ty _) = ty
-	typeOf (StmtExpr _ ty _) = ty
-	typeOf (Assign _ _ ty _) = ty
-	typeOf (Cast _ ty _) = ty
-	typeOf (Call _ _ ty _) = ty
-	typeOf (Unary _ _ ty _) = ty
-	typeOf (Binary _ _ _ ty _) = ty
-	typeOf (CondExpr _ _ _ ty _) = ty
-	typeOf (Index _ _ ty _) = ty
-	typeOf (Member _ _ _ ty _) = ty
-	typeOf (Var _ ty _) = ty
-	typeOf (Constant _ ty _) = ty
-	typeOf (Comp _ ty _) = ty
+typeOf :: Expr ty -> ty
+typeOf (StmtExpr _ ty _) = ty
+typeOf (Assign _ _ ty _) = ty
+typeOf (Cast _ ty _) = ty
+typeOf (Call _ _ ty _) = ty
+typeOf (Unary _ _ ty _) = ty
+typeOf (Binary _ _ _ ty _) = ty
+typeOf (CondExpr _ _ _ ty _) = ty
+typeOf (Index _ _ ty _) = ty
+typeOf (Member _ _ _ ty _) = ty
+typeOf (Var _ ty _) = ty
+typeOf (Constant _ ty _) = ty
+typeOf (Comp _ ty _) = ty
 
-data UnaryOp = AddrOf | DerefOp | Neg | Exor | Not
+data UnaryOp = AddrOf | Deref | Plus | Minus | ExOr | Not |
+	PreInc | PostInc | PreDec | PostDec
 	deriving (Show,Generic)
 
 data BinaryOp =
 	Mul | Div | Add | Sub | Rmd | Shl | Shr |
-	Less | Equals | LessEq | Greater | GreaterEq |
+	Less | Equals | NotEquals | LessEq | Greater | GreaterEq |
 	And | Or | BitAnd | BitOr | BitXOr
 	deriving (Show,Generic)
 
-data VarDeclaration = VarDeclaration {
+data VarDeclaration a = VarDeclaration {
 	identVD      :: Ident,
 	sourceTypeVD :: String,
-	typeVD       :: ZType,
+	typeVD       :: a,
 	locVD        :: Loc }
 	deriving (Show,Generic)
 
@@ -107,24 +104,26 @@ data Const =
 	StringConst String
 	deriving (Show,Generic)
 
-data Stmt =
-	Decls [VarDeclaration] Loc |
-	Label Ident Stmt Loc |
-	Compound [Stmt] Loc |
-	IfThenElse Expr Stmt Stmt Loc |
-	ExprStmt Expr Loc |
-	While Expr Stmt Loc |
-	Return (Maybe Expr) Loc |
+data Stmt a =
+	Decls [VarDeclaration a] Loc |
+	Label Ident (Stmt a) Loc |
+	Compound [Stmt a] Loc |
+	IfThenElse (Expr a) (Stmt a) (Stmt a) Loc |
+	ExprStmt (Expr a) Loc |
+	While (Expr a) (Stmt a) Loc |
+	Return (Maybe (Expr a)) Loc |
 	Continue Loc |
+	Break Loc |
 	Goto Ident Loc
 	deriving (Show,Generic)
 
 {-
-	Second step:
-	1. expand vardecls into multiple DECLs
-	2. expand CondExprs to IfThenElse
-	3. dissect expressions with side effects,
-	=> Expr no sideeffects
+	AST transformations:
 
-	Output is a list of Computations (Stmt,Expr,Stmt)
+	expand vardecls into multiple DECLs
+	rewrite loops to While
+	rewrite Neq to Not equal
+	rewrite expressions containing side effects
+	expand CondExprs to IfThenElse
+	type annotation
 -}

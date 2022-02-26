@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE RecordWildCards,LambdaCase,UnicodeSyntax,PackageImports #-}
+{-# LANGUAGE RecordWildCards,LambdaCase,UnicodeSyntax,PackageImports,StandaloneDeriving,DeriveGeneric #-}
 
 module Parsing (
 	parseFile)
@@ -15,7 +15,7 @@ import Language.C.Analysis.AstAnalysis (analyseAST)
 import Language.C.Analysis.TravMonad (runTrav_,getDefTable,withDefTable)
 import qualified Language.C.Data.Ident as CIdent
 import Language.C.Syntax.AST
-import Language.C.Syntax.Constants (getCInteger)
+import Language.C.Syntax.Constants (getCInteger,CFloat(..),getCString,getCChar)
 import Language.C.Data.Node (lengthOfNode,NodeInfo,nodeInfo,CNode)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn,isSourcePos)
 import Language.C.Syntax.Ops (assignBinop)
@@ -33,13 +33,30 @@ import MachineSpec
 import Utils
 import DataTree
 
-{-
-While translating the Language.C AST to our AST, we also do type inference,
-so we avoid having to define an intermediate format for an untyped R3 AST, which would
-necessarily be different from the typed one (hence could not simply be implemented by a type parameter).
--}
+import GHC.Generics
+deriving instance Generic Type
+deriving instance Generic TypeName
+deriving instance Generic TypeQuals
+deriving instance Generic Attr
+deriving instance Generic ArraySize
+deriving instance Generic FunType
+deriving instance Generic TypeDefRef
+deriving instance Generic IntType
+deriving instance Generic FloatType
+deriving instance Generic CompTypeRef
+deriving instance Generic EnumTypeRef
+deriving instance Generic BuiltinType
+deriving instance Generic CompTyKind
+deriving instance Generic ParamDecl
+deriving instance Generic VarDecl
+deriving instance Generic DeclAttrs
+deriving instance Generic FunctionAttrs
+deriving instance Generic Storage
+deriving instance Generic Linkage
+deriving instance Generic VarName
 
-parseFile :: FilePath → R3 (Either String TranslUnit)
+
+parseFile :: FilePath → R3 (Either String (TranslUnit TypeAttrs))
 parseFile filepath = do
 	gcc <- gets compilerR3
 	liftIO $ parseCFile (newGCC gcc) Nothing [] filepath >>= \case
@@ -59,24 +76,11 @@ parseFile filepath = do
 					liftIO $ writeFile "AST.html" $ astToHTMLString ast
 					return $ Right ast
 
-globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit
+type TypeAttrs = Maybe (Type,Attributes)
+
+globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit TypeAttrs
 globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys cident2ident gObjs
 	where
-
-	intTy = ZInt intSize True
-
-	decl2stmt :: CDecl -> Stmt
-	decl2stmt (CDecl declspecs triples ni) = Decls vardecls (ni2loc ni)
-		where
-		vardecls = for triples $ \ (Just cdeclr@(CDeclr (Just cident) _ _ _ ni),mb_init,mb_expr) ->
-			case runTrav_ $ do
-				withDefTable (const ((),deftable))
-				ty <- analyseTypeDecl $ CDecl declspecs [(Just cdeclr,mb_init,mb_expr)] ni
-				return (cident,ty,ni)
-				of
-				Left errs                -> error $ show errs
-				Right ((cident,ty,ni),_) ->
-					VarDeclaration (cident2ident cident) ((render.pretty) ty) (ty2zty [] ty) (ni2loc ni)
 
 	ni2loc :: (CNode n) => n → Loc
 	ni2loc n = let ni = nodeInfo n in case posOf ni of
@@ -85,6 +89,29 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 
 	cident2ident :: CIdent.Ident → Ident
 	cident2ident (CIdent.Ident name i ni) = Ident name i (ni2loc ni)
+
+	getCDeclType :: CDecl -> Type
+	getCDeclType cdecl = case runTrav_ (withDefTable (const ((),deftable)) >> analyseTypeDecl cdecl) of
+		Left errs    -> error $ show errs
+		Right (ty,_) -> ty
+
+	decl2stmt :: CDecl -> Stmt TypeAttrs
+	decl2stmt (CDecl declspecs triples ni) = Decls vardecls (ni2loc ni)
+		where
+		vardecls = for triples $ \ (Just cdeclr@(CDeclr (Just cident) _ _ _ ni),mb_init,mb_expr) ->
+			let ty = getCDeclType $ CDecl declspecs [(Just cdeclr,mb_init,mb_expr)] ni in
+				VarDeclaration (cident2ident cident) ((render.pretty) ty) (Just (ty,[])) (ni2loc ni)
+{-
+		withDefTable (const ((),deftable))
+		ty <- analyseTypeDecl $ CDecl declspecs [(Just cdeclr,mb_init,mb_expr)] ni
+		return (cident,ty,ni)
+		of
+		Left errs                -> error $ show errs
+		Right ((cident,ty,ni),_) ->
+			VarDeclaration
+-}
+{-
+	intTy = ZInt intSize True
 
 	ty2zty :: Attributes → Type → ZType
 	ty2zty attrs ty = case ty of
@@ -151,15 +178,16 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 
 		other → error $ "ty2zty " ++ show other ++ " not implemented!"
 
-	decl2vardecl :: (Declaration d) => NodeInfo → d → VarDeclaration
-	decl2vardecl ni decl = VarDeclaration (cident2ident ident) ((render.pretty) ty) (ty2zty attrs ty) (ni2loc ni)
+	eval_const_expr :: CExpr -> Integer
+	eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
+-}
+
+	decl2vardecl :: (Declaration d) => NodeInfo → d → VarDeclaration TypeAttrs
+	decl2vardecl ni decl = VarDeclaration (cident2ident ident) ((render.pretty) ty) (Just (ty,attrs)) (ni2loc ni)
 		where
 		VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty = getVarDecl decl
 
-	eval_const_expr :: CExpr -> Integer
-	eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
-
-	identdecl2extdecl :: IdentDecl → ExtDecl
+	identdecl2extdecl :: IdentDecl → ExtDecl TypeAttrs
 	identdecl2extdecl identdecl = ExtDecl vardeclast body loc
 		where
 		vardeclast = decl2vardecl ni identdecl
@@ -170,16 +198,16 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 			Declaration (SemRep.Decl vardecl _)   → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast expr
 			ObjectDef (ObjDef vardecl mb_init _)  → Left $ fmap initializer2expr mb_init where
-				initializer2expr :: CInitializer NodeInfo → Expr
+				initializer2expr :: CInitializer NodeInfo → Expr TypeAttrs
 				initializer2expr (CInitExpr expr _)     = expr2ast expr
 				initializer2expr (CInitList initlist _) = Comp idexprs (typeVD vardeclast) loc where
 					idexprs = for initlist $ \ ([],initializer) → initializer2expr initializer
 
-	cbi2ast :: CBlockItem -> Stmt
+	cbi2ast :: CBlockItem -> Stmt TypeAttrs
 	cbi2ast (CBlockStmt stmt) = stmt2ast stmt
 	cbi2ast (CBlockDecl decl) = decl2stmt decl
 
-	stmt2ast :: CStat → Stmt
+	stmt2ast :: CStat → Stmt TypeAttrs
 	stmt2ast (CCompound _ cbis ni) = Compound (map cbi2ast cbis) (ni2loc ni)
 	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (stmt2ast stmt) (ni2loc ni)
 	stmt2ast (CIf expr then_stmt mb_else_stmt ni) =
@@ -206,36 +234,38 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 	stmt2ast (CBreak ni) = Break (ni2loc ni)
 	stmt2ast (CReturn mb_expr ni) = Return (fmap expr2ast mb_expr) (ni2loc ni)
 --	stmt2ast (CSwitch expr (CCompound [] cbis _) ni) =
-
 	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
-	expr2ast :: Maybe ZType → CExpr → Expr
-	expr2ast mb_𝜏 cexpr = case mb_𝜏 of
-		Just target_ty | target_ty /= typeOf expr → Cast expr target_ty (ni2loc expr)
-		_                                         → expr
-
-		where
-
-		expr = to_ast cexpr
-
-		to_ast (CAssign ass_op lexpr rexpr ni) = Assign lexpr' expr' (typeOf lexpr') (ni2loc ni) where
-			lexpr' = expr2ast mb_𝜏 lexpr
-			rexpr' = expr2ast mb_𝜏 rexpr
-			expr'  = case ass_op of
-				CAssignOp → rexpr'
-				other_op  → Binary binop lexpr' rexpr' zty (ni2loc rexpr) where
-					Just binop = lookup ass_op [
-						(CMulAssOp,Mul),(CDivAssOp,Div),(CRmdAssOp,Rmd),(CAddAssOp,Add),(CSubAssOp,Sub),
-						(CShlAssOp,Shl),(CShrAssOp,Shr),(CAndAssOp,BitAnd),(CXorAssOp,BitXOr),(COrAssOp,BitOr) ]
-		to_ast (CCond cond (Just then_expr) else_expr ni) =
-			CondExpr (expr2ast cond) (expr2ast then_expr) (expr2ast else_expr) (ni2loc ni)
-		to_ast (CCast cdecl expr ni) = Cast (expr2ast expr) (typeVD vardecl) (ni2loc ni) where
-			Decls [vardecl] _ = decl2stmt cdecl
-		to_ast (CBinary binop expr1 expr2 ni) = Binary binop' (expr2ast expr1) (expr2ast expr2) (ni2loc ni) where
-			Just binop' = lookup binop [
-				(CMulOp,Mul),(CDivOp,Div),(CRmdOp,Rmd),(CAddOp,Add),(CSubOp,Sub),(CShlOp,Shl),
-				(CShrOp,Shr),(CLeOp,LessEq),(CGrOp,Greater),(CLeqOp,LessEq),(CGeqOp,GreaterEq),(CEqOp,Equals),(CNeqOp,),
-				(CAndOp,),(CXorOp,),(COrOp,),(CLndOp,),(CLorOp,) ]
-		to_ast (CUnary unop expr ni) = Unary unop' (expr2ast expr) (ni2loc ni)
-		to_ast (CIndex arr index ni) = Index (expr2ast ? arr) (expr2ast intTy index) (ni2loc ni)
-		to_ast other = error $ "to_ast " ++ show other ++ " not implemented"
+	expr2ast :: CExpr → Expr TypeAttrs
+	expr2ast (CAssign ass_op lexpr rexpr ni) = Assign lexpr' expr' Nothing (ni2loc ni) where
+		lexpr' = expr2ast lexpr
+		rexpr' = expr2ast rexpr
+		expr'  = case ass_op of
+			CAssignOp → rexpr'
+			other_op  → Binary binop lexpr' rexpr' Nothing (ni2loc rexpr) where
+				Just binop = lookup ass_op [
+					(CMulAssOp,Mul),(CDivAssOp,Div),(CRmdAssOp,Rmd),(CAddAssOp,Add),(CSubAssOp,Sub),
+					(CShlAssOp,Shl),(CShrAssOp,Shr),(CAndAssOp,BitAnd),(CXorAssOp,BitXOr),(COrAssOp,BitOr) ]
+	expr2ast (CCond cond (Just then_expr) else_expr ni) =
+		CondExpr (expr2ast cond) (expr2ast then_expr) (expr2ast else_expr) Nothing (ni2loc ni)
+	expr2ast (CCast cdecl expr ni) = Cast (expr2ast expr) (Just (getCDeclType cdecl,[])) (ni2loc ni)
+	expr2ast (CBinary binop expr1 expr2 ni) = Binary binop' (expr2ast expr1) (expr2ast expr2) Nothing (ni2loc ni) where
+		Just binop' = lookup binop [
+			(CMulOp,Mul),(CDivOp,Div),(CRmdOp,Rmd),(CAddOp,Add),(CSubOp,Sub),(CShlOp,Shl),
+			(CShrOp,Shr),(CLeOp,LessEq),(CGrOp,Greater),(CLeqOp,LessEq),(CGeqOp,GreaterEq),(CEqOp,Equals),(CNeqOp,NotEquals),
+			(CAndOp,BitAnd),(CXorOp,BitXOr),(COrOp,BitOr),(CLndOp,And),(CLorOp,Or) ]
+	expr2ast (CUnary unop expr ni) = Unary unop' (expr2ast expr) Nothing (ni2loc ni) where
+		Just unop' = lookup unop [
+			(CPreIncOp,PreInc),(CPreDecOp,PreDec),(CPostIncOp,PostInc),(CPostDecOp,PostDec),(CAdrOp,AddrOf),
+			(CIndOp,Deref),(CPlusOp,Plus),(CMinOp,Minus),(CCompOp,ExOr),(CNegOp,Not) ] :: Maybe UnaryOp
+	expr2ast (CIndex arr index ni) = Index (expr2ast arr) (expr2ast index) Nothing (ni2loc ni)
+	expr2ast (CConst const) = Constant const' Nothing (ni2loc ni) where
+		(const',ni) = case const of
+			CIntConst cinteger ni     -> (IntConst (getCInteger cinteger),ni)
+			CCharConst cchar ni       -> (CharConst (read $ getCChar cchar),ni)
+			CFloatConst (CFloat f) ni -> (FloatConst (read f),ni)
+			CStrConst cstring ni      -> (StringConst $ (getCString cstring),ni)
+	expr2ast (CMember expr ident is_ptr ni) = Member (expr2ast expr) (cident2ident ident) is_ptr Nothing (ni2loc ni)
+	expr2ast (CVar ident ni) = Var (cident2ident ident) Nothing (ni2loc ni)
+	expr2ast (CCall fun args ni) = Call (expr2ast fun) (map expr2ast args) Nothing (ni2loc ni)
+	expr2ast other = error $ "expr2ast " ++ show other ++ " not implemented"
