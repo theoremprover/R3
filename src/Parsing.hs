@@ -195,7 +195,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		loc = ni2loc ni
 		body = case identdecl of
 			FunctionDef (FunDef vardecl stmt _)   → Right $ stmt2ast stmt
-			Declaration (SemRep.Decl vardecl _)   → Left Nothing
+			SemRep.Declaration (SemRep.Decl vardecl _)   → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast expr
 			ObjectDef (ObjDef vardecl mb_init _)  → Left $ fmap initializer2expr mb_init where
 				initializer2expr :: CInitializer NodeInfo → Expr TypeAttrs

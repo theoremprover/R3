@@ -106,6 +106,7 @@ data Const =
 
 data Stmt a =
 	Decls [VarDeclaration a] Loc |
+	Decl (VarDeclaration a) Loc |
 	Label Ident (Stmt a) Loc |
 	Compound [Stmt a] Loc |
 	IfThenElse (Expr a) (Stmt a) (Stmt a) Loc |

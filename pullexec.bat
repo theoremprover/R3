@@ -10,7 +10,7 @@ del tmpFile
 git pull --no-edit origin master
 if errorlevel 1 goto :err
 
-stack build :analyzer-exe
+stack build
 if errorlevel 1 goto :err
 
 stack exec
