@@ -13,7 +13,7 @@ testTe = Te [ Te [TeInt 1,TeInt 2], Te [ TeInt 3, TeInt 4 ]]
 testG = [[1,2,3],[4,5,6]] :: [[Int]]
 -}
 
-type ASTMap k v = ASTMap.Map k v
+type ASTMap v = ASTMap.Map Ident v
 
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic)
 instance Eq Ident where
@@ -41,18 +41,23 @@ data ZType =
 	ZUnhandled String
 	deriving (Show,Generic)
 
-type TranslUnit a = ASTMap Ident (ExtDecl a)
+type TranslUnit a = ASTMap (ExtDecl a)
 
 -- AST contains variable declarations, each of them having either
 -- 1. maybe an initializer (i.e. a variable declaration), or
 -- 2. a statement as body of the defined function
 --    (the arguments and their types are in the type of the function identifier)
 
-data ExtDecl a = ExtDecl (VarDeclaration a) (Either (Maybe (Expr a)) (Stmt a)) Loc
+data ExtDecl a = ExtDecl {
+	varDeclED :: VarDeclaration a,
+	bodyED    :: Either (Maybe (Expr a)) (FunDef a),
+	locED     :: Loc }
+	deriving (Show,Generic)
+
+data FunDef a = FunDef [VecDeclaration a] (Stmt a)
 	deriving (Show,Generic)
 
 data Expr a =
-	StmtExpr (Stmt a) a Loc |
 	Assign (Expr a) (Expr a) a Loc |
 	Cast (Expr a) a Loc |
 	Call (Expr a) [Expr a] a Loc |
@@ -67,7 +72,6 @@ data Expr a =
 	deriving (Show,Generic)
 
 typeOf :: Expr ty -> ty
-typeOf (StmtExpr _ ty _) = ty
 typeOf (Assign _ _ ty _) = ty
 typeOf (Cast _ ty _) = ty
 typeOf (Call _ _ ty _) = ty

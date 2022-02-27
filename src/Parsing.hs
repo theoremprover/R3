@@ -78,9 +78,15 @@ parseFile filepath = do
 
 type TypeAttrs = Maybe (Type,Attributes)
 
-globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit TypeAttrs
-globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys cident2ident gObjs
+type TyEnvItem = (Ident,ZType)
+type TyEnv = [TyEnvItem]
+
+globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit ZType
+globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
+
 	where
+
+	translunit_typeattrs = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys cident2ident gObjs
 
 	ni2loc :: (CNode n) => n → Loc
 	ni2loc n = let ni = nodeInfo n in case posOf ni of
@@ -101,86 +107,6 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		vardecls = for triples $ \ (Just cdeclr@(CDeclr (Just cident) _ _ _ ni),mb_init,mb_expr) →
 			let ty = getCDeclType $ CDecl declspecs [(Just cdeclr,mb_init,mb_expr)] ni in
 				VarDeclaration (cident2ident cident) ((render.pretty) ty) (Just (ty,[])) (ni2loc ni)
-{-
-		withDefTable (const ((),deftable))
-		ty <- analyseTypeDecl $ CDecl declspecs [(Just cdeclr,mb_init,mb_expr)] ni
-		return (cident,ty,ni)
-		of
-		Left errs                -> error $ show errs
-		Right ((cident,ty,ni),_) ->
-			VarDeclaration
--}
-{-
-	intTy = ZInt intSize True
-
-	ty2zty :: Attributes → Type → ZType
-	ty2zty attrs ty = case ty of
-		DirectType tyname _ tyattrs → case tyname of
-			TyIntegral intty → case (intty,modes) of
-				(TyChar,[])     → ZInt  8 True
-				(TySChar,[])    → ZInt  8 False
-				(TyUChar,[])    → ZInt  8 True
-				(TyShort,[])    → ZInt 16 False
-				(TyUShort,[])   → ZInt 16 True
-				(TyInt,[])      → ZInt intSize False
-				(TyInt,["SI"])  → ZInt 32 False
-				(TyInt,["DI"])  → ZInt 64 False
-				(TyUInt,[])     → ZInt intSize True
-				(TyUInt,["SI"]) → ZInt 32 True
-				(TyUInt,["DI"]) → ZInt 64 True
-				(TyLong,[])     → ZInt longSize False
-				(TyULong,[])    → ZInt longSize True
-				(TyLLong,[])    → ZInt longLongSize False
-				(TyULLong,[])   → ZInt longLongSize True
-				other           → error $ "ty2zty " ++ show other ++ " not implemented!"
-			TyFloating floatty → case (floatty,modes) of
-				(TyFloat,[])     → ZFloat  8  24
-				(TyFloat,["SF"]) → ZFloat  8  24
-				(TyFloat,["DF"]) → ZFloat 11  53
-				(TyDouble,[])    → ZFloat 11  53
-				(TyLDouble,[])   → ZFloat 15 113
-				other            → error $ "ty2zty " ++ show other ++ " not implemented!"
-			TyVoid             → ZUnit
-			TyEnum enumtyperef → resolve_sueref enumtyperef
-			TyComp comptyperef → resolve_sueref comptyperef
-			_                  → ZUnhandled $ (render.pretty) ty
-
-			where
-
-			resolve_sueref :: (HasSUERef a) => a → ZType
-			resolve_sueref hassueref = case ASTMap.lookup sueref gTags of
-				Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
-				Just (CompDef (CompType _ comptykind memberdecls attrs ni)) →
-					ZCompound (compkind2comptype comptykind) (map (decl2vardecl ni) memberdecls)
-				Just (EnumDef (EnumType _ enumerators attrs ni)) →
-					ZEnum $ for enumerators $ \ (Enumerator ident expr _ ni) →
-						(cident2ident ident,eval_const_expr expr)
-				where
-				sueref = sueRef hassueref
-				compkind2comptype StructTag = Struct
-				compkind2comptype UnionTag  = Union
-
-			modes = nub $ concat $ for (tyattrs++attrs) $ \case
-				Attr (CIdent.Ident "mode" _ _) [CVar (CIdent.Ident mode _ _) _] _ → [mode]
-				Attr (CIdent.Ident "fardata" _ _) _ _                             → []
-				attr → error $ "mode: unknown attr " ++ show attr
-
-		ArrayType elem_ty arraysize _ _ → ZArray (ty2zty [] elem_ty) $ case arraysize of
-			ArraySize _ size   → Just $ eval_const_expr size
-			UnknownArraySize _ → Nothing
-
-		PtrType target_ty _ _ → ZPtr $ ty2zty [] target_ty
-
-		FunctionType (FunType target_ty paramdecls is_variadic) _ →
-			ZFun (ty2zty [] target_ty) is_variadic $ map ((ty2zty []).declType) paramdecls
-
-		TypeDefType (TypeDefRef _ innerty _) _ attribs → ty2zty (attribs++attrs) innerty
-
-		other → error $ "ty2zty " ++ show other ++ " not implemented!"
-
-	eval_const_expr :: CExpr -> Integer
-	eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
--}
 
 	decl2vardecl :: (Declaration d) => NodeInfo → d → VarDeclaration TypeAttrs
 	decl2vardecl ni decl = VarDeclaration (cident2ident ident) ((render.pretty) ty) (Just (ty,attrs)) (ni2loc ni)
@@ -194,7 +120,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 		ni = nodeInfo identdecl
 		loc = ni2loc ni
 		body = case identdecl of
-			FunctionDef (FunDef vardecl stmt _)        → Right $ stmt2ast stmt
+			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType _ paramdecls _) _)) stmt _) →
+				Right $ FunDef (map decl2vardecl paramdecls) (stmt2ast stmt)
 			SemRep.Declaration (SemRep.Decl vardecl _) → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _)      → Left $ Just $ expr2ast expr
 			ObjectDef (ObjDef vardecl mb_init _)       → Left $ fmap initializer2expr mb_init where
@@ -269,3 +196,99 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = ASTMap.map identdecl2ex
 	expr2ast (CVar ident ni) = Var (cident2ident ident) Nothing (ni2loc ni)
 	expr2ast (CCall fun args ni) = Call (expr2ast fun) (map expr2ast args) Nothing (ni2loc ni)
 	expr2ast other = error $ "expr2ast " ++ show other ++ " not implemented"
+
+	intTy = ZInt intSize True
+
+	ty2zty :: (Type,Attributes) → ZType
+	ty2zty (ty,attrs) = case ty of
+		DirectType tyname _ tyattrs → case tyname of
+			TyIntegral intty → case (intty,modes) of
+				(TyChar,[])     → ZInt  8 True
+				(TySChar,[])    → ZInt  8 False
+				(TyUChar,[])    → ZInt  8 True
+				(TyShort,[])    → ZInt 16 False
+				(TyUShort,[])   → ZInt 16 True
+				(TyInt,[])      → ZInt intSize False
+				(TyInt,["SI"])  → ZInt 32 False
+				(TyInt,["DI"])  → ZInt 64 False
+				(TyUInt,[])     → ZInt intSize True
+				(TyUInt,["SI"]) → ZInt 32 True
+				(TyUInt,["DI"]) → ZInt 64 True
+				(TyLong,[])     → ZInt longSize False
+				(TyULong,[])    → ZInt longSize True
+				(TyLLong,[])    → ZInt longLongSize False
+				(TyULLong,[])   → ZInt longLongSize True
+				other           → error $ "ty2zty " ++ show other ++ " not implemented!"
+			TyFloating floatty → case (floatty,modes) of
+				(TyFloat,[])     → ZFloat  8  24
+				(TyFloat,["SF"]) → ZFloat  8  24
+				(TyFloat,["DF"]) → ZFloat 11  53
+				(TyDouble,[])    → ZFloat 11  53
+				(TyLDouble,[])   → ZFloat 15 113
+				other            → error $ "ty2zty " ++ show other ++ " not implemented!"
+			TyVoid             → ZUnit
+			TyEnum enumtyperef → resolve_sueref enumtyperef
+			TyComp comptyperef → resolve_sueref comptyperef
+			_                  → ZUnhandled $ (render.pretty) ty
+
+			where
+
+			resolve_sueref :: (HasSUERef a) => a → ZType
+			resolve_sueref hassueref = case ASTMap.lookup sueref gTags of
+				Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
+				Just (CompDef (CompType _ comptykind memberdecls attrs ni)) →
+					ZCompound (compkind2comptype comptykind) (map (decl2vardecl ni) memberdecls)
+				Just (EnumDef (EnumType _ enumerators attrs ni)) →
+					ZEnum $ for enumerators $ \ (Enumerator ident expr _ ni) →
+						(cident2ident ident,eval_const_expr expr)
+				where
+				sueref = sueRef hassueref
+				compkind2comptype StructTag = Struct
+				compkind2comptype UnionTag  = Union
+
+			modes = nub $ concat $ for (tyattrs++attrs) $ \case
+				Attr (CIdent.Ident "mode" _ _) [CVar (CIdent.Ident mode _ _) _] _ → [mode]
+				Attr (CIdent.Ident "fardata" _ _) _ _                             → []
+				attr → error $ "mode: unknown attr " ++ show attr
+
+		ArrayType elem_ty arraysize _ _ → ZArray (ty2zty [] elem_ty) $ case arraysize of
+			ArraySize _ size   → Just $ eval_const_expr size
+			UnknownArraySize _ → Nothing
+
+		PtrType target_ty _ _ → ZPtr $ ty2zty [] target_ty
+
+		FunctionType (FunType target_ty paramdecls is_variadic) _ →
+			ZFun (ty2zty [] target_ty) is_variadic $ map ((ty2zty []).declType) paramdecls
+
+		TypeDefType (TypeDefRef _ innerty _) _ attribs → ty2zty (attribs++attrs) innerty
+
+		other → error $ "ty2zty " ++ show other ++ " not implemented!"
+
+	eval_const_expr :: CExpr -> Integer
+	eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
+
+	--------------
+
+	vardecl2envitem :: VarDeclaration :: TyEnvItem
+	vardecl2envitem = VarDeclaration{..} = (identVD,typeVD)
+
+	global_tyenv :: TyEnv
+	global_tyenv = ASTMap.assocs $ ASTMap.map (vardecl2envitem.varDeclED) translunit_typeattrs where
+
+	translunit_ztype :: TranslUnit ZType
+	translunit_ztype = ASTMap.map infer_extdecl translunit_typeattrs
+
+	infer_extdecl :: ExtDecl TypeAttrs → ExtDecl ZType
+	infer_extdecl (ExtDecl vardecl value loc) =
+		ExtDecl (vardecl { typeVD = zty }) value' loc
+		where
+		zty = ty2zty (typeVD vardecl)
+		value' = case value of
+			Left mb_expr → fmap (infer_expr tyenv zty) mb_expr
+			Right (FunDef vardecls body) → infer_stmt (arg_env++global_tyenv) stmt where
+				arg_env = map vardecl2envitem vardecls
+
+	infer_expr :: TyEnv → Maybe ZType → Expr TypeAttrs → Expr ZType
+	infer_expr target_ty (Assign lexpr expr tya loc) = Assign () (infer_expr target_ty expr) loc where
+		lexpr' = infer_expr Nothing lexpr
+		expr' = infer_expr (Just $ typeOf lexpr') expr
