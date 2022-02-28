@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE RecordWildCards,LambdaCase,UnicodeSyntax,PackageImports,StandaloneDeriving,DeriveGeneric #-}
+{-# LANGUAGE RecordWildCards,TupleSections,LambdaCase,UnicodeSyntax,PackageImports,StandaloneDeriving,DeriveGeneric #-}
 
 module Parsing (
 	parseFile)
@@ -120,8 +120,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 		ni = nodeInfo identdecl
 		loc = ni2loc ni
 		body = case identdecl of
-			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType _ paramdecls _) _)) stmt _) →
-				Right $ AST.FunDef (map decl2vardecl paramdecls) (stmt2ast stmt)
+			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType _ paramdecls _) _)) stmt ni) →
+				Right $ AST.FunDef (map (decl2vardecl ni) paramdecls) (stmt2ast stmt)
 			SemRep.Declaration (SemRep.Decl vardecl _) → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _)      → Left $ Just $ expr2ast expr
 			ObjectDef (ObjDef vardecl mb_init _)       → Left $ fmap initializer2expr mb_init where
@@ -197,6 +197,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 	expr2ast (CCall fun args ni) = Call (expr2ast fun) (map expr2ast args) Nothing (ni2loc ni)
 	expr2ast other = error $ "expr2ast " ++ show other ++ " not implemented"
 
+	--------------
+
 	intTy = ZInt intSize True
 
 	ty2zty :: (Type,Attributes) → ZType
@@ -237,7 +239,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 			resolve_sueref hassueref = case ASTMap.lookup sueref gTags of
 				Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
 				Just (CompDef (CompType _ comptykind memberdecls attrs ni)) →
-					ZCompound (compkind2comptype comptykind) (map (decl2vardecl ni) memberdecls)
+					ZCompound (compkind2comptype comptykind)
+						(map (infer_vardecl . (decl2vardecl ni)) memberdecls)
 				Just (EnumDef (EnumType _ enumerators attrs ni)) →
 					ZEnum $ for enumerators $ \ (Enumerator ident expr _ ni) →
 						(cident2ident ident,eval_const_expr expr)
@@ -251,23 +254,25 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 				Attr (CIdent.Ident "fardata" _ _) _ _                             → []
 				attr → error $ "mode: unknown attr " ++ show attr
 
-		ArrayType elem_ty arraysize _ _ → ZArray (ty2zty [] elem_ty) $ case arraysize of
+		ArrayType elem_ty arraysize _ attribs → ZArray (ty2zty (elem_ty,attribs++attrs)) $ case arraysize of
 			ArraySize _ size   → Just $ eval_const_expr size
 			UnknownArraySize _ → Nothing
 
-		PtrType target_ty _ _ → ZPtr $ ty2zty [] target_ty
+		PtrType target_ty _ attribs → ZPtr $ ty2zty (target_ty,attribs++attrs)
 
-		FunctionType (FunType target_ty paramdecls is_variadic) _ →
-			ZFun (ty2zty [] target_ty) is_variadic $ map ((ty2zty []).declType) paramdecls
+		FunctionType (FunType target_ty paramdecls is_variadic) attribs →
+			ZFun (ty2zty (target_ty,attribs++attrs)) is_variadic $
+				map (ty2zty.(,attribs++attrs).declType) paramdecls
 
-		TypeDefType (TypeDefRef _ innerty _) _ attribs → ty2zty (attribs++attrs) innerty
+		TypeDefType (TypeDefRef _ innerty _) _ attribs → ty2zty (innerty,attribs++attrs)
 
 		other → error $ "ty2zty " ++ show other ++ " not implemented!"
 
 	eval_const_expr :: CExpr -> Integer
 	eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
 
-	--------------
+	infer_vardecl :: VarDeclaration TypeAttrs → VarDeclaration ZType
+	infer_vardecl VarDeclaration{..} = VarDeclaration identVD sourceTypeVD (ty2zty typeVD) locVD
 
 	vardecl2envitem :: VarDeclaration ZType → TyEnvItem
 	vardecl2envitem VarDeclaration{..} = (identVD,typeVD)
@@ -289,10 +294,16 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 				arg_env = map vardecl2envitem vardecls
 
 	infer_expr :: TyEnv → Maybe ZType → Expr TypeAttrs → Expr ZType
-	infer_expr tyenv target_ty (Assign lexpr expr tya loc) = Assign () (infer_expr target_ty expr) loc
+	infer_expr tyenv mb_target_ty expr = case mb_target_ty of
+		Just target_ty | target_ty /= typeOf expr' → Cast expr' target_ty (NoLoc "<inserted>")
+		Nothing                                    → expr'
 		where
-		lexpr' = infer_expr Nothing lexpr
-		expr'  = infer_expr (Just $ typeOf lexpr') expr
+		expr' = case expr of
+			Assign lexpr expr tya loc →
+				Assign () (infer_expr tyenv mb_target_ty expr) loc
+				where
+				lexpr' = infer_expr Nothing lexpr
+				expr'  = infer_expr (Just $ typeOf lexpr') expr
 
 	infer_stmt :: TyEnv → Stmt TypeAttrs → Stmt ZType
 	infer_stmt tyenv stmt = error ""
