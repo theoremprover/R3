@@ -56,7 +56,7 @@ deriving instance Generic Linkage
 deriving instance Generic VarName
 
 
-parseFile :: FilePath → R3 (Either String (TranslUnit TypeAttrs))
+parseFile :: FilePath → R3 (Either String (TranslUnit ZType))
 parseFile filepath = do
 	gcc <- gets compilerR3
 	liftIO $ parseCFile (newGCC gcc) Nothing [] filepath >>= \case
@@ -121,7 +121,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 		loc = ni2loc ni
 		body = case identdecl of
 			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType _ paramdecls _) _)) stmt _) →
-				Right $ FunDef (map decl2vardecl paramdecls) (stmt2ast stmt)
+				Right $ AST.FunDef (map decl2vardecl paramdecls) (stmt2ast stmt)
 			SemRep.Declaration (SemRep.Decl vardecl _) → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _)      → Left $ Just $ expr2ast expr
 			ObjectDef (ObjDef vardecl mb_init _)       → Left $ fmap initializer2expr mb_init where
@@ -269,8 +269,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 	--------------
 
-	vardecl2envitem :: VarDeclaration :: TyEnvItem
-	vardecl2envitem = VarDeclaration{..} = (identVD,typeVD)
+	vardecl2envitem :: VarDeclaration ZType → TyEnvItem
+	vardecl2envitem VarDeclaration{..} = (identVD,typeVD)
 
 	global_tyenv :: TyEnv
 	global_tyenv = ASTMap.assocs $ ASTMap.map (vardecl2envitem.varDeclED) translunit_typeattrs where
@@ -285,10 +285,14 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 		zty = ty2zty (typeVD vardecl)
 		value' = case value of
 			Left mb_expr → fmap (infer_expr tyenv zty) mb_expr
-			Right (FunDef vardecls body) → infer_stmt (arg_env++global_tyenv) stmt where
+			Right (AST.FunDef vardecls body) → infer_stmt (arg_env++global_tyenv) stmt where
 				arg_env = map vardecl2envitem vardecls
 
 	infer_expr :: TyEnv → Maybe ZType → Expr TypeAttrs → Expr ZType
-	infer_expr target_ty (Assign lexpr expr tya loc) = Assign () (infer_expr target_ty expr) loc where
+	infer_expr tyenv target_ty (Assign lexpr expr tya loc) = Assign () (infer_expr target_ty expr) loc
+		where
 		lexpr' = infer_expr Nothing lexpr
-		expr' = infer_expr (Just $ typeOf lexpr') expr
+		expr'  = infer_expr (Just $ typeOf lexpr') expr
+
+	infer_stmt :: TyEnv → Stmt TypeAttrs → Stmt ZType
+	infer_stmt tyenv stmt = error ""

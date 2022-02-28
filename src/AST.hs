@@ -54,7 +54,7 @@ data ExtDecl a = ExtDecl {
 	locED     :: Loc }
 	deriving (Show,Generic)
 
-data FunDef a = FunDef [VecDeclaration a] (Stmt a)
+data FunDef a = FunDef [VarDeclaration a] (Stmt a)
 	deriving (Show,Generic)
 
 data Expr a =
