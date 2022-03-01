@@ -41,7 +41,7 @@ data ZType =
 	ZUnhandled String
 	deriving (Show,Generic)
 
-type TranslUnit a = ASTMap (ExtDecl a)
+type TranslUnit a = [ExtDecl a]
 
 -- AST contains variable declarations, each of them having either
 -- 1. maybe an initializer (i.e. a variable declaration), or

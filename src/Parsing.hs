@@ -272,13 +272,14 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 	eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
 
 	infer_vardecl :: VarDeclaration TypeAttrs → VarDeclaration ZType
-	infer_vardecl VarDeclaration{..} = VarDeclaration identVD sourceTypeVD (ty2zty typeVD) locVD
+	infer_vardecl VarDeclaration{..} = VarDeclaration identVD sourceTypeVD (ty2zty tyattrs) locVD where
+		Just tyattrs = typeVD
 
 	vardecl2envitem :: VarDeclaration ZType → TyEnvItem
 	vardecl2envitem VarDeclaration{..} = (identVD,typeVD)
 
 	global_tyenv :: TyEnv
-	global_tyenv = ASTMap.assocs $ ASTMap.map (vardecl2envitem.varDeclED) translunit_typeattrs where
+	global_tyenv = ASTMap.assocs $ ASTMap.map (ty2zty.varDeclED) translunit_typeattrs
 
 	translunit_ztype :: TranslUnit ZType
 	translunit_ztype = ASTMap.map infer_extdecl translunit_typeattrs
