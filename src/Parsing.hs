@@ -279,32 +279,60 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 	vardecl2envitem VarDeclaration{..} = (identVD,typeVD)
 
 	global_tyenv :: TyEnv
-	global_tyenv = ASTMap.assocs $ ASTMap.map (ty2zty.varDeclED) translunit_typeattrs
+	global_tyenv = ASTMap.assocs $ ASTMap.map (ty2zty.fromJust.typeVD.varDeclED) translunit_typeattrs
 
 	translunit_ztype :: TranslUnit ZType
 	translunit_ztype = ASTMap.map infer_extdecl translunit_typeattrs
 
 	infer_extdecl :: ExtDecl TypeAttrs → ExtDecl ZType
-	infer_extdecl (ExtDecl vardecl value loc) =
-		ExtDecl (vardecl { typeVD = zty }) value' loc
+	infer_extdecl (ExtDecl vardecl value loc) = ExtDecl vardecl' value' loc
 		where
-		zty = ty2zty (typeVD vardecl)
+		vardecl' = infer_vardecl vardecl
+		zty = typeVD vardecl'
 		value' = case value of
-			Left mb_expr → fmap (infer_expr tyenv zty) mb_expr
-			Right (AST.FunDef vardecls body) → infer_stmt (arg_env++global_tyenv) stmt where
-				arg_env = map vardecl2envitem vardecls
+			Left mb_expr → Left $ fmap (infer_expr global_tyenv (Just zty)) mb_expr
+			Right (AST.FunDef vardecls body) → Right $ AST.FunDef (map infer_vardecl vardecls) $
+				infer_stmt (arg_env++global_tyenv) body
+				where
+				vardecls' = map infer_vardecl vardecls
+				arg_env   = map vardecl2envitem vardecls'
 
 	infer_expr :: TyEnv → Maybe ZType → Expr TypeAttrs → Expr ZType
 	infer_expr tyenv mb_target_ty expr = case mb_target_ty of
-		Just target_ty | target_ty /= typeOf expr' → Cast expr' target_ty (NoLoc "<inserted>")
+		Just target_ty | target_ty /= typeE expr' → Cast expr' target_ty (NoLoc "<inserted>")
 		Nothing                                    → expr'
-		where
-		expr' = case expr of
-			Assign lexpr expr tya loc →
-				Assign () (infer_expr tyenv mb_target_ty expr) loc
-				where
-				lexpr' = infer_expr Nothing lexpr
-				expr'  = infer_expr (Just $ typeOf lexpr') expr
 
+		where
+
+		τ      = infer_expr tyenv Nothing
+		τ_e ty = infer_expr tyenv (Just ty)
+
+		expr' = case expr of
+
+			Assign lexpr expr Nothing loc →
+				Assign lexpr' (τ_e lexpr'ty expr) lexpr'ty loc
+				where
+				lexpr'   = τ lexpr
+				lexpr'ty = typeE lexpr'
+
+			Cast expr (Just ty) loc → Cast (τ expr) (ty2zty ty) loc
+
+			Call fun args (Just ret_ty) loc → Call (τ fun) (map τ args) (ty2zty ret_ty) loc
+
+			Unary unop expr Nothing loc → Unary unop expr' ty loc where
+				expr' = τ expr
+				expr'_ty = typeE expr'
+				ty = case unop of
+					AddrOf  → ZPtr expr'_ty
+					Deref   → targettyZ expr'_ty
+					Plus    → expr'_ty
+					Minus   → expr'_ty
+					ExOr    → expr'_ty
+					Not     → ZBool
+					PreInc  → expr'_ty
+					PostInc → expr'_ty
+					PreDec  → expr'_ty
+					PostDec → expr'_ty
+					
 	infer_stmt :: TyEnv → Stmt TypeAttrs → Stmt ZType
 	infer_stmt tyenv stmt = error ""

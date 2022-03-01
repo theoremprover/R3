@@ -30,18 +30,19 @@ instance Show Loc where
 data CompoundType = Struct | Union deriving (Show,Eq,Ord,Generic)
 
 data ZType =
-	ZUnit |          -- void is the unit type
-	ZInt Int Bool |  -- ZInt size_bits isUnsigned
-	ZFloat Int Int | -- ZFloat exp_bits significand_bits  (significand_bits includes the hidden bit, but excludes sign bit)
-	ZArray ZType (Maybe Integer) |
-	ZPtr ZType |
-	ZCompound CompoundType [VarDeclaration ZType] |
-	ZEnum [(Ident,Integer)] |
-	ZFun ZType {-isVariadic::-}Bool [ZType] |
-	ZUnhandled String
-	deriving (Show,Generic)
+	ZUnit                                                                                    | -- void is the unit type
+	ZBool                                                                                    |
+	ZInt       { sizeZ     :: Int,               isunsignedZ   :: Bool                     } |
+	ZFloat     { expbitsZ  :: Int,               mantissabitsZ :: Int                      } | -- (mantissabitsZ includes the hidden bit, but excludes sign bit)
+	ZArray     { elemtyZ   :: ZType,             arrsizeZ      :: Maybe Integer            } |
+	ZPtr       { targettyZ :: ZType                                                        } |
+	ZCompound  { comptyZ   :: CompoundType,      elemtysZ      :: [VarDeclaration ZType]   } |
+	ZEnum      { elemsZ    :: [(Ident,Integer)]                                            } |
+	ZFun       { rettyZ    :: ZType,             isvariadicZ   :: Bool, argtysZ :: [ZType] } |
+	ZUnhandled { descrZ    :: String                                                       }
+	deriving (Show,Generic,Eq)
 
-type TranslUnit a = [ExtDecl a]
+type TranslUnit a = ASTMap (ExtDecl a)
 
 -- AST contains variable declarations, each of them having either
 -- 1. maybe an initializer (i.e. a variable declaration), or
@@ -58,31 +59,18 @@ data FunDef a = FunDef [VarDeclaration a] (Stmt a)
 	deriving (Show,Generic)
 
 data Expr a =
-	Assign (Expr a) (Expr a) a Loc |
-	Cast (Expr a) a Loc |
-	Call (Expr a) [Expr a] a Loc |
-	Unary UnaryOp (Expr a) a Loc |
-	Binary BinaryOp (Expr a) (Expr a) a Loc |
-	CondExpr (Expr a) (Expr a) (Expr a) a Loc |
-	Index (Expr a) (Expr a) a Loc |
-	Member (Expr a) Ident Bool a Loc |
-	Var Ident a Loc |
-	Constant Const a Loc |
-	Comp [Expr a] a Loc
+	Assign   { lexprE :: Expr a,   exprE   :: Expr a,   typeE  :: a,      locE  :: Loc            } |
+	Cast     { exprE  :: Expr a,   typeE   :: a,        locE   :: Loc                             } |
+	Call     { exprE  :: Expr a,   argsE   :: [Expr a], typeE  :: a,      locE  :: Loc            } |
+	Unary    { unopE  :: UnaryOp,  exprE   :: Expr a,   typeE  :: a,      locE  :: Loc            } |
+	Binary   { binopE :: BinaryOp, expr1E  :: Expr a,   expr2E :: Expr a, typeE :: a, locE :: Loc } |
+	CondExpr { condE  :: Expr a,   thenE   :: Expr a,   elseE  :: Expr a, typeE :: a, locE :: Loc } |
+	Index    { exprE  :: Expr a,   indexE  :: Expr a,   typeE  :: a,      locE  :: Loc            } |
+	Member   { exprE  :: Expr a,   memberE :: Ident,    isptrE :: Bool,   typeE :: a, locE :: Loc } |
+	Var      { identE :: Ident,    typeE   :: a,        locE   :: Loc                             } |
+	Constant { constE :: Const,    typeE   :: a,        locE   :: Loc                             } |
+	Comp     { elemsE :: [Expr a], typeE   :: a,        locE   :: Loc                             }
 	deriving (Show,Generic)
-
-typeOf :: Expr ty -> ty
-typeOf (Assign _ _ ty _) = ty
-typeOf (Cast _ ty _) = ty
-typeOf (Call _ _ ty _) = ty
-typeOf (Unary _ _ ty _) = ty
-typeOf (Binary _ _ _ ty _) = ty
-typeOf (CondExpr _ _ _ ty _) = ty
-typeOf (Index _ _ ty _) = ty
-typeOf (Member _ _ _ ty _) = ty
-typeOf (Var _ ty _) = ty
-typeOf (Constant _ ty _) = ty
-typeOf (Comp _ ty _) = ty
 
 data UnaryOp = AddrOf | Deref | Plus | Minus | ExOr | Not |
 	PreInc | PostInc | PreDec | PostDec
@@ -100,6 +88,9 @@ data VarDeclaration a = VarDeclaration {
 	typeVD       :: a,
 	locVD        :: Loc }
 	deriving (Show,Generic)
+instance (Eq a) => Eq (VarDeclaration a) where
+	(VarDeclaration ident1 _ ty1 _) == (VarDeclaration ident2 _ ty2 _) =
+		ident1==ident2 && ty1==ty2
 
 data Const =
 	IntConst Integer |
