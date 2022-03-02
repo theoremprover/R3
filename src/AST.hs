@@ -88,9 +88,11 @@ data VarDeclaration a = VarDeclaration {
 	typeVD       :: a,
 	locVD        :: Loc }
 	deriving (Show,Generic,Ord)
+{-
 instance (Eq a) => Eq (VarDeclaration a) where
 	(VarDeclaration ident1 _ ty1 _) == (VarDeclaration ident2 _ ty2 _) =
 		ident1==ident2 && ty1==ty2
+-}
 
 data Const =
 	IntConst Integer |

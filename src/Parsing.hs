@@ -336,11 +336,28 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 			Binary op expr1 expr2 Nothing loc → Binary op (mb_cast max_ty expr1') (mb_cast max_ty expr2') ty loc
 				where
 				(expr1',expr2') = (τ expr1,τ expr2)
-				(expr1'_ty,expr2'_ty) = (typeE expr1',typeE expr2')
-				max_ty = max expr1'_ty expr2'_ty
+				max_ty = max (typeE expr1') (typeE expr2')
 				ty = case op of
 					op | op `elem` [Mul,Div,Add,Sub,Rmd,Shl,Shr,BitAnd,BitOr,BitXOr] → max_ty
 					op | op `elem` [Less,Equals,NotEquals,LessEq,Greater,GreaterEq]  → ZBool
+
+			CondExpr cond then_expr else_expr Nothing loc →
+				CondExpr cond' (mb_cast max_ty then_expr') (mb_cast max_ty else_expr') max_ty loc
+				where
+				cond' = τ_e ZBool cond
+				(then_expr',else_expr') = (τ then_expr,τ else_expr)
+				max_ty = max (typeE then_expr') (typeE else_expr')
+
+			Index arr ix Nothing loc → Index arr' (τ_e intTy ix) elemty loc where
+				arr' = τ arr
+				ZArray elemty _ = typeE arr'
+
+			Member expr member_ident isptr Nothing loc → Member expr' member_ident isptr ty loc
+				where
+				expr' = τ expr
+				ty = case (isptr,typeE expr') of
+					(False,ZPtr (ZCompound _ elemtys)) |
+						Just t <- lookupVarDeclTy member_ident elemtys → t
 
 	infer_stmt :: TyEnv → Stmt TypeAttrs → Stmt ZType
 	infer_stmt tyenv stmt = error ""
