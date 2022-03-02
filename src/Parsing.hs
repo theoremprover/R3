@@ -15,10 +15,11 @@ import Language.C.Analysis.AstAnalysis (analyseAST)
 import Language.C.Analysis.TravMonad (runTrav_,getDefTable,withDefTable)
 import qualified Language.C.Data.Ident as CIdent
 import Language.C.Syntax.AST
-import Language.C.Syntax.Constants (getCInteger,CFloat(..),getCString,getCChar)
+import Language.C.Syntax.Constants (CInteger(..),getCInteger,CFloat(..),getCString,getCChar)
 import Language.C.Data.Node (lengthOfNode,NodeInfo,nodeInfo,CNode)
 import Language.C.Data.Position (posOf,posFile,posRow,posColumn,isSourcePos)
 import Language.C.Syntax.Ops (assignBinop)
+import Language.C.Analysis.TypeUtils (getIntType,getFloatType,integral,floating)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.State.Lazy
 import Data.List (nub)
@@ -186,12 +187,12 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 			(CPreIncOp,PreInc),(CPreDecOp,PreDec),(CPostIncOp,PostInc),(CPostDecOp,PostDec),(CAdrOp,AddrOf),
 			(CIndOp,Deref),(CPlusOp,Plus),(CMinOp,Minus),(CCompOp,ExOr),(CNegOp,Not) ]
 	expr2ast (CIndex arr index ni) = Index (expr2ast arr) (expr2ast index) Nothing (ni2loc ni)
-	expr2ast (CConst const) = Constant const' Nothing (ni2loc ni) where
-		(const',ni) = case const of
-			CIntConst cinteger ni     → (IntConst (getCInteger cinteger),ni)
-			CCharConst cchar ni       → (CharConst (read $ getCChar cchar),ni)
-			CFloatConst (CFloat f) ni → (FloatConst (read f),ni)
-			CStrConst cstring ni      → (StringConst $ (getCString cstring),ni)
+	expr2ast (CConst ctconst) = Constant const' (Just ty) (ni2loc ni) where
+		(const',ty,ni) = case ctconst of
+			CIntConst cinteger@(CInteger _ _ flags) ni → (IntConst (getCInteger cinteger),(integral $ getIntType flags,[]),ni)
+			CCharConst cchar ni       → (CharConst (read $ getCChar cchar),(integral TyChar,[]),ni)
+			CFloatConst (CFloat f) ni → (FloatConst (read f),(floating $ getFloatType f,[]),ni)
+			CStrConst cstring ni      → (StringConst $ (getCString cstring),(PtrType (integral TyChar) noTypeQuals noAttributes,[]),ni)
 	expr2ast (CMember expr ident is_ptr ni) = Member (expr2ast expr) (cident2ident ident) is_ptr Nothing (ni2loc ni)
 	expr2ast (CVar ident ni) = Var (cident2ident ident) Nothing (ni2loc ni)
 	expr2ast (CCall fun args ni) = Call (expr2ast fun) (map expr2ast args) Nothing (ni2loc ni)
@@ -199,7 +200,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 	--------------
 
-	intTy = ZInt intSize True
+	intTy  = ZInt intSize True
 
 	ty2zty :: (Type,Attributes) → ZType
 	ty2zty (ty,attrs) = case ty of
@@ -355,9 +356,19 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 			Member expr member_ident isptr Nothing loc → Member expr' member_ident isptr ty loc
 				where
 				expr' = τ expr
-				ty = case (isptr,typeE expr') of
-					(False,ZPtr (ZCompound _ elemtys)) |
-						Just t <- lookupVarDeclTy member_ident elemtys → t
+				ty = lookupVarDeclsTy member_ident $ case (isptr,typeE expr') of
+					(True ,ZPtr (ZCompound _ elemtys)) → elemtys
+					(False,     (ZCompound _ elemtys)) → elemtys
+
+			Var ident Nothing loc → Var ident ty loc where
+				Just ty = lookup ident tyenv
+
+			Constant constant (Just ty) loc → Constant constant (ty2zty ty) loc
+
+			Comp elems (Just ty) loc → Comp (map τ elems) (ty2zty ty) loc
 
 	infer_stmt :: TyEnv → Stmt TypeAttrs → Stmt ZType
 	infer_stmt tyenv stmt = error ""
+
+lookupVarDeclsTy :: Ident → [VarDeclaration a] → a
+lookupVarDeclsTy ident vardecls = typeVD $ head $ filter ((==ident).identVD) vardecls
