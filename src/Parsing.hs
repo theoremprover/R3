@@ -368,6 +368,9 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 			Comp elems (Just ty) loc → Comp (map τ elems) (ty2zty ty) loc
 
 	infer_stmt :: TyEnv → Stmt TypeAttrs → Stmt ZType
+	infer_stmt tyenv stmt = case stmt of
+		Compound stmts loc →
+		Decls vardecls loc → Decls () loc
 	infer_stmt tyenv stmt = error ""
 
 lookupVarDeclsTy :: Ident → [VarDeclaration a] → a
