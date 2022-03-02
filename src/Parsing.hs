@@ -299,7 +299,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 	mb_cast :: ZType -> Expr ZType -> Expr ZType
 	mb_cast target_ty expr | target_ty /= typeE expr = Cast expr target_ty (NoLoc "<inserted>")
-	mb_cast _ = expr
+	mb_cast _ expr = expr
 
 	infer_expr :: TyEnv → Maybe ZType → Expr TypeAttrs → Expr ZType
 	infer_expr tyenv mb_target_ty expr = case mb_target_ty of
@@ -339,9 +339,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 				(expr1'_ty,expr2'_ty) = (typeE expr1',typeE expr2')
 				max_ty = max expr1'_ty expr2'_ty
 				ty = case op of
-					Mul  → ZPtr expr'_ty
-					op | op `elem` [Mul,Div,Add,Sub,Rmd,Shl,Shr,BitAnd,BitOr,BitXOr]
-					       → expr'_ty
+					op | op `elem` [Mul,Div,Add,Sub,Rmd,Shl,Shr,BitAnd,BitOr,BitXOr] → max_ty
+					op | op `elem` [Less,Equals,NotEquals,LessEq,Greater,GreaterEq]  → ZBool
 
 	infer_stmt :: TyEnv → Stmt TypeAttrs → Stmt ZType
 	infer_stmt tyenv stmt = error ""

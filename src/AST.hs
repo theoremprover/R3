@@ -29,7 +29,7 @@ instance Show Loc where
 
 data CompoundType = Struct | Union deriving (Show,Eq,Ord,Generic)
 
--- The
+-- The ordering of the constructors have to reflect the C casting hierarchy
 data ZType =
 	ZUnit                                                                                    | -- void is the unit type
 	ZBool                                                                                    |
@@ -41,14 +41,7 @@ data ZType =
 	ZCompound  { comptyZ   :: CompoundType,      elemtysZ      :: [VarDeclaration ZType]   } |
 	ZFun       { rettyZ    :: ZType,             isvariadicZ   :: Bool, argtysZ :: [ZType] } |
 	ZUnhandled { descrZ    :: String                                                       }
-	deriving (Show,Generic,Eq)
-instance Ord ZType where
-	ZUnit <= _ = True
-	_ <= ZUnit = False
-	ZBool <= _ = True
-	_ <= ZBool = False
-
-
+	deriving (Show,Generic,Eq,Ord)
 
 type TranslUnit a = ASTMap (ExtDecl a)
 
@@ -82,20 +75,19 @@ data Expr a =
 
 data UnaryOp = AddrOf | Deref | Plus | Minus | ExOr | Not |
 	PreInc | PostInc | PreDec | PostDec
-	deriving (Show,Generic)
+	deriving (Show,Generic,Eq)
 
 data BinaryOp =
-	Mul | Div | Add | Sub | Rmd | Shl | Shr |
-	Less | Equals | NotEquals | LessEq | Greater | GreaterEq |
-	And | Or | BitAnd | BitOr | BitXOr
-	deriving (Show,Generic)
+	Mul | Div | Add | Sub | Rmd | Shl | Shr | BitAnd | BitOr | BitXOr |
+	Less | Equals | NotEquals | LessEq | Greater | GreaterEq | And | Or	
+	deriving (Show,Generic,Eq)
 
 data VarDeclaration a = VarDeclaration {
 	identVD      :: Ident,
 	sourceTypeVD :: String,
 	typeVD       :: a,
 	locVD        :: Loc }
-	deriving (Show,Generic)
+	deriving (Show,Generic,Ord)
 instance (Eq a) => Eq (VarDeclaration a) where
 	(VarDeclaration ident1 _ ty1 _) == (VarDeclaration ident2 _ ty2 _) =
 		ident1==ident2 && ty1==ty2
