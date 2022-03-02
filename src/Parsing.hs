@@ -297,10 +297,14 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 				vardecls' = map infer_vardecl vardecls
 				arg_env   = map vardecl2envitem vardecls'
 
+	mb_cast :: ZType -> Expr ZType -> Expr ZType
+	mb_cast target_ty expr | target_ty /= typeE expr = Cast expr target_ty (NoLoc "<inserted>")
+	mb_cast _ = expr
+
 	infer_expr :: TyEnv → Maybe ZType → Expr TypeAttrs → Expr ZType
 	infer_expr tyenv mb_target_ty expr = case mb_target_ty of
-		Just target_ty | target_ty /= typeE expr' → Cast expr' target_ty (NoLoc "<inserted>")
-		Nothing                                    → expr'
+		Nothing -> expr'
+		Just target_ty -> mb_cast target_ty expr'
 
 		where
 
@@ -319,20 +323,25 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 			Call fun args (Just ret_ty) loc → Call (τ fun) (map τ args) (ty2zty ret_ty) loc
 
-			Unary unop expr Nothing loc → Unary unop expr' ty loc where
+			Unary op expr Nothing loc → Unary op expr' ty loc where
 				expr' = τ expr
 				expr'_ty = typeE expr'
-				ty = case unop of
-					AddrOf  → ZPtr expr'_ty
-					Deref   → targettyZ expr'_ty
-					Plus    → expr'_ty
-					Minus   → expr'_ty
-					ExOr    → expr'_ty
-					Not     → ZBool
-					PreInc  → expr'_ty
-					PostInc → expr'_ty
-					PreDec  → expr'_ty
-					PostDec → expr'_ty
-					
+				ty = case op of
+					AddrOf → ZPtr expr'_ty
+					Deref  → targettyZ expr'_ty
+					Not    → ZBool
+					op | op `elem` [Plus,Minus,ExOr,PreInc,PostInc,PreDec,PostDec]
+					       → expr'_ty
+
+			Binary op expr1 expr2 Nothing loc → Binary op (mb_cast max_ty expr1') (mb_cast max_ty expr2') ty loc
+				where
+				(expr1',expr2') = (τ expr1,τ expr2)
+				(expr1'_ty,expr2'_ty) = (typeE expr1',typeE expr2')
+				max_ty = max expr1'_ty expr2'_ty
+				ty = case op of
+					Mul  → ZPtr expr'_ty
+					op | op `elem` [Mul,Div,Add,Sub,Rmd,Shl,Shr,BitAnd,BitOr,BitXOr]
+					       → expr'_ty
+
 	infer_stmt :: TyEnv → Stmt TypeAttrs → Stmt ZType
 	infer_stmt tyenv stmt = error ""

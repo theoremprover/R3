@@ -29,18 +29,26 @@ instance Show Loc where
 
 data CompoundType = Struct | Union deriving (Show,Eq,Ord,Generic)
 
+-- The
 data ZType =
 	ZUnit                                                                                    | -- void is the unit type
 	ZBool                                                                                    |
 	ZInt       { sizeZ     :: Int,               isunsignedZ   :: Bool                     } |
+	ZEnum      { elemsZ    :: [(Ident,Integer)]                                            } |
 	ZFloat     { expbitsZ  :: Int,               mantissabitsZ :: Int                      } | -- (mantissabitsZ includes the hidden bit, but excludes sign bit)
 	ZArray     { elemtyZ   :: ZType,             arrsizeZ      :: Maybe Integer            } |
 	ZPtr       { targettyZ :: ZType                                                        } |
 	ZCompound  { comptyZ   :: CompoundType,      elemtysZ      :: [VarDeclaration ZType]   } |
-	ZEnum      { elemsZ    :: [(Ident,Integer)]                                            } |
 	ZFun       { rettyZ    :: ZType,             isvariadicZ   :: Bool, argtysZ :: [ZType] } |
 	ZUnhandled { descrZ    :: String                                                       }
 	deriving (Show,Generic,Eq)
+instance Ord ZType where
+	ZUnit <= _ = True
+	_ <= ZUnit = False
+	ZBool <= _ = True
+	_ <= ZBool = False
+
+
 
 type TranslUnit a = ASTMap (ExtDecl a)
 
