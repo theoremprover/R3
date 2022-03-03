@@ -3,7 +3,6 @@
 
 
 
-#ifdef MAN
 __attribute__((__cdecl__)) int printf(const char *, ...);
 __attribute__((__cdecl__)) int sscanf(const char *, const char *, ...);
 union { float float_val; unsigned long int uint_val; } float_conv;
@@ -81,7 +80,6 @@ void solver_find(int i)
 {
 printf("solver_find() encountered! %i\n",i);
 }
-#endif
 
 
 
@@ -513,7 +511,6 @@ __pack_d_drill (const fp_number_type *src)
   return dst.raw_value;
 }
 
-/*
 static fp_number_type*
 _fpadd_parts_drill (fp_number_type * a,
        fp_number_type * b,
@@ -650,13 +647,6 @@ _fpadd_parts_drill (fp_number_type * a,
     }
   return tmp;
 }
-*/
-/* Noch zu covern:
-pack_d von __floatsidf   Dokument! R2? erledigt.
-pack_d von __subdf3  ()
-pack_d von __adddf3  ()
-
-*/
 
 FLO_type
 __adddf3_drill (FLO_type arg_a, FLO_type arg_b)
@@ -724,24 +714,6 @@ __mymuldf3 (FLO_type arg_a, FLO_type arg_b)
 
 #ifdef MAN
 
-
-/*
-((bv$arg_a #xffb9ff9e125bcfb7))
-((bv$arg_b #xffb5717273cae891))
-
-((bv$arg_a #xffb6896a0347e1ab))
-((bv$arg_b #xeff7c2fffbcb221d))
-
-((bv$arg_a #xffbec7cec7b8692c))
-((bv$arg_b #xffba50a9e705aead))
-
-((bv$arg_a #xffbf7304ab1b8d16))
-((bv$arg_b #xeff417d793c8a7f5))
-
-((bv$arg_a #xffb020f410000000))
-((bv$arg_b #xffbfcdafd1000000))
-
-*/
 void main(void)
 {
 	FLO_union_type f0a,f0b;
@@ -824,15 +796,3 @@ __unpack_d_drill (FLO_union_type * src, fp_number_type * dst)
 */
 }
 #endif
-
-
-
-/*
-cracknum --dp ffb9ff9e125bcfb7 > stimuli.txt
-cracknum --dp ffb5717273cae891 >> stimuli.txt
-cracknum --dp ffb6896a0347e1ab >> stimuli.txt
-cracknum --dp eff7c2fffbcb221d >> stimuli.txt
-cracknum --dp ffb020f410000000 >> stimuli.txt
-cracknum --dp ffbfcdafd1000000 >> stimuli.txt
-
-*/

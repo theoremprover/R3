@@ -82,6 +82,9 @@ type TypeAttrs = Maybe (Type,Attributes)
 type TyEnvItem = (Ident,ZType)
 type TyEnv = [TyEnvItem]
 
+showTyEnv :: TyEnv -> String
+showTyEnv tyenv = unlines $ map show tyenv
+
 globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit ZType
 globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
@@ -143,7 +146,9 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 		else_stmt = case mb_else_stmt of
 			Nothing     → Compound [] (ni2loc then_stmt)
 			Just e_stmt → stmt2ast e_stmt
-	stmt2ast (CExpr (Just expr) ni) = ExprStmt (expr2ast expr) (ni2loc ni)
+	stmt2ast (CExpr mb_expr ni) = case mb_expr of
+		Just expr -> ExprStmt (expr2ast expr) (ni2loc ni)
+		Nothing   -> ExprStmt (Constant (IntConst 99) intType (ni2loc ni)) (ni2loc ni)
 	stmt2ast (CWhile cond body False ni) = While (expr2ast cond) (stmt2ast body) (ni2loc ni)
 	stmt2ast (CWhile cond body True ni) = Compound [body',loop] (ni2loc ni) where
 		body' = stmt2ast body
@@ -197,6 +202,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 	expr2ast (CVar ident ni) = Var (cident2ident ident) Nothing (ni2loc ni)
 	expr2ast (CCall fun args ni) = Call (expr2ast fun) (map expr2ast args) Nothing (ni2loc ni)
 	expr2ast other = error $ "expr2ast " ++ show other ++ " not implemented"
+
+	intType = Just (integral TyInt,[]) :: TypeAttrs
 
 	--------------
 
@@ -253,6 +260,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 			modes = nub $ concat $ for (tyattrs++attrs) $ \case
 				Attr (CIdent.Ident "mode" _ _) [CVar (CIdent.Ident mode _ _) _] _ → [mode]
 				Attr (CIdent.Ident "fardata" _ _) _ _                             → []
+				Attr (CIdent.Ident "__cdecl__" _ _) _ _                           → []
 				attr → error $ "mode: unknown attr " ++ show attr
 
 		ArrayType elem_ty arraysize _ attribs → ZArray (ty2zty (elem_ty,attribs++attrs)) $ case arraysize of
@@ -321,7 +329,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 			Cast expr (Just ty) loc → Cast (τ expr) (ty2zty ty) loc
 
-			Call fun args (Just ret_ty) loc → Call (τ fun) (map τ args) (ty2zty ret_ty) loc
+			Call fun args Nothing loc → Call fun' (map (uncurry τ_e) $ zip argtys args) retty loc
+				where
+				fun' = τ fun
+				ZFun retty _ argtys = typeE fun'
 
 			Unary op expr Nothing loc → Unary op expr' ty loc where
 				expr' = τ expr
@@ -333,13 +344,15 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 					op | op `elem` [Plus,Minus,ExOr,PreInc,PostInc,PreDec,PostDec]
 					       → expr'_ty
 
-			Binary op expr1 expr2 Nothing loc → Binary op (mb_cast max_ty expr1') (mb_cast max_ty expr2') ty loc
+			Binary op expr1 expr2 Nothing loc → Binary op (mb_cast arg_ty expr1') (mb_cast arg_ty expr2') res_ty loc
 				where
 				(expr1',expr2') = (τ expr1,τ expr2)
 				max_ty = max (typeE expr1') (typeE expr2')
-				ty = case op of
-					op | op `elem` [Mul,Div,Add,Sub,Rmd,Shl,Shr,BitAnd,BitOr,BitXOr] → max_ty
-					op | op `elem` [Less,Equals,NotEquals,LessEq,Greater,GreaterEq]  → ZBool
+				(res_ty,arg_ty) = case op of
+					op | op `elem` [Mul,Div,Add,Sub,Rmd,Shl,Shr,BitAnd,BitOr,BitXOr] → (max_ty,max_ty)
+					op | op `elem` [Less,Equals,NotEquals,LessEq,Greater,GreaterEq]  → (ZBool,max_ty)
+					op | op `elem` [And,Or]                                          → (ZBool,ZBool)
+					other -> error $ "infer_expr " ++ show other ++ " not implemented"
 
 			CondExpr cond then_expr else_expr Nothing loc →
 				CondExpr cond' (mb_cast max_ty then_expr') (mb_cast max_ty else_expr') max_ty loc
@@ -359,22 +372,29 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 					(True ,ZPtr (ZCompound _ elemtys)) → elemtys
 					(False,     (ZCompound _ elemtys)) → elemtys
 
-			Var ident Nothing loc → Var ident ty loc where
-				Just ty = lookup ident tyenv
+			Var ident Nothing loc → Var ident ty loc
+				where
+				ty = case lookup ident tyenv of
+					Just t -> t
+					Nothing -> error $ "lookup " ++ show ident ++ " not found in\n" ++ showTyEnv tyenv
+
 
 			Constant constant (Just ty) loc → Constant constant (ty2zty ty) loc
 
 			Comp elems (Just ty) loc → Comp (map τ elems) (ty2zty ty) loc
 
+			other → error $ "infer_expr " ++ show other ++ " not implemented"
+
 	infer_stmt :: [TyEnv] → [Stmt TypeAttrs] → [Stmt ZType]
 	infer_stmt _ [] = []
 	infer_stmt tyenvs@(tyenv:resttyenvs) ((Decls vardecls loc):stmts) =
-		infer_stmt ((newenvitems++tyenv):resttyenvs) stmts loc
+		infer_stmt ((newenvitems++tyenv):resttyenvs) stmts
 		where
 		newenvitems = map (vardecl2envitem.infer_vardecl) vardecls
 
-	infer_stmt tyenvs (stmt:stmts) = stmt' : infer_stmt tyenvs stmts where
-		stmts' = case other of
+	infer_stmt tyenvs (stmt:stmts) = stmt' : infer_stmt tyenvs stmts
+		where
+		stmt' = case stmt of
 
 			Compound inner_stmts loc → Compound (infer_stmt ([]:tyenvs) inner_stmts) loc
 
@@ -393,7 +413,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 			Return mb_expr loc → Return (fmap (infer_expr (concat tyenvs) Nothing) mb_expr) loc
 
-	infer_stmt _ (stmt:_) = error $ "infer_stmt " ++ show stmt ++ " not implemented"
+			other → error $ "infer_stmt " ++ show other ++ " not implemented"
 
 lookupVarDeclsTy :: Ident → [VarDeclaration a] → a
 lookupVarDeclsTy ident vardecls = typeVD $ head $ filter ((==ident).identVD) vardecls
