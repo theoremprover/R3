@@ -293,7 +293,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 		value' = case value of
 			Left mb_expr → Left $ fmap (infer_expr global_tyenv (Just zty)) mb_expr
 			Right (AST.FunDef vardecls body) → Right $ AST.FunDef (map infer_vardecl vardecls) $
-				infer_stmt (arg_env++global_tyenv) body
+				infer_stmt [arg_env,global_tyenv] [body]
 				where
 				vardecls' = map infer_vardecl vardecls
 				arg_env   = map vardecl2envitem vardecls'
@@ -367,10 +367,26 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 			Comp elems (Just ty) loc → Comp (map τ elems) (ty2zty ty) loc
 
-	infer_stmt :: TyEnv → Stmt TypeAttrs → Stmt ZType
-	infer_stmt tyenv stmt = case stmt of
-		Compound stmts loc →
-		Decls vardecls loc → Decls () loc
+	infer_stmt :: [TyEnv] → [Stmt TypeAttrs] → [Stmt ZType]
+	infer_stmt _ [] = []
+	infer_stmt tyenvs@(tyenv:resttyenvs) (stmt:stmts) = case stmt of
+
+		Compound inner_stmts loc → Compound (infer_stmt ([]:tyenvs) inner_stmts) loc
+
+		Decls vardecls loc → infer_stmt ((newenvitems++tyenv):resttyenvs) stmts loc
+			where
+			newenvitems = map (vardecl2envitem.infer_vardecls) vardecls
+
+		IfThenElse cond then_stmt else_stmt loc = IfThenElse cond' then_stmt' else_stmt' loc
+			where
+			cond' = infer_expr (concat tyenvs) (Just ZBool) cond
+			[then_stmt'] = infer_stmt tyenvs [then_stmt]
+			[else_stmt'] = infer_stmt tyenvs [else_stmt]
+
+		ExprStmt expr loc = ExprStmt (infer_expr (concat tyenvs) Nothing expr) loc
+
+		While cond body
+
 	infer_stmt tyenv stmt = error ""
 
 lookupVarDeclsTy :: Ident → [VarDeclaration a] → a
