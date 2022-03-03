@@ -292,12 +292,11 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 		zty = typeVD vardecl'
 		value' = case value of
 			Left mb_expr → Left $ fmap (infer_expr global_tyenv (Just zty)) mb_expr
-			Right (AST.FunDef vardecls body) → Right $ AST.FunDef (map infer_vardecl vardecls) $
-				infer_stmt [arg_env,global_tyenv] [body]
+			Right (AST.FunDef vardecls body) → Right $ AST.FunDef (map infer_vardecl vardecls) body'
 				where
 				vardecls' = map infer_vardecl vardecls
 				arg_env   = map vardecl2envitem vardecls'
-
+				[body']   = infer_stmt [arg_env,global_tyenv] [body]
 	mb_cast :: ZType -> Expr ZType -> Expr ZType
 	mb_cast target_ty expr | target_ty /= typeE expr = Cast expr target_ty (NoLoc "<inserted>")
 	mb_cast _ expr = expr
@@ -369,25 +368,32 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 	infer_stmt :: [TyEnv] → [Stmt TypeAttrs] → [Stmt ZType]
 	infer_stmt _ [] = []
-	infer_stmt tyenvs@(tyenv:resttyenvs) (stmt:stmts) = case stmt of
+	infer_stmt tyenvs@(tyenv:resttyenvs) ((Decls vardecls loc):stmts) =
+		infer_stmt ((newenvitems++tyenv):resttyenvs) stmts loc
+		where
+		newenvitems = map (vardecl2envitem.infer_vardecl) vardecls
 
-		Compound inner_stmts loc → Compound (infer_stmt ([]:tyenvs) inner_stmts) loc
+	infer_stmt tyenvs (stmt:stmts) = stmt' : infer_stmt tyenvs stmts where
+		stmts' = case other of
 
-		Decls vardecls loc → infer_stmt ((newenvitems++tyenv):resttyenvs) stmts loc
-			where
-			newenvitems = map (vardecl2envitem.infer_vardecls) vardecls
+			Compound inner_stmts loc → Compound (infer_stmt ([]:tyenvs) inner_stmts) loc
 
-		IfThenElse cond then_stmt else_stmt loc = IfThenElse cond' then_stmt' else_stmt' loc
-			where
-			cond' = infer_expr (concat tyenvs) (Just ZBool) cond
-			[then_stmt'] = infer_stmt tyenvs [then_stmt]
-			[else_stmt'] = infer_stmt tyenvs [else_stmt]
+			IfThenElse cond then_stmt else_stmt loc → IfThenElse cond' then_stmt' else_stmt' loc
+				where
+				cond' = infer_expr (concat tyenvs) (Just ZBool) cond
+				[then_stmt'] = infer_stmt tyenvs [then_stmt]
+				[else_stmt'] = infer_stmt tyenvs [else_stmt]
 
-		ExprStmt expr loc = ExprStmt (infer_expr (concat tyenvs) Nothing expr) loc
+			ExprStmt expr loc → ExprStmt (infer_expr (concat tyenvs) Nothing expr) loc
 
-		While cond body
+			While cond body loc → While cond' body' loc
+				where
+				cond' = infer_expr (concat tyenvs) (Just ZBool) cond
+				[body'] = infer_stmt tyenvs [body]
 
-	infer_stmt tyenv stmt = error ""
+			Return mb_expr loc → Return (fmap (infer_expr (concat tyenvs) Nothing) mb_expr) loc
+
+	infer_stmt _ (stmt:_) = error $ "infer_stmt " ++ show stmt ++ " not implemented"
 
 lookupVarDeclsTy :: Ident → [VarDeclaration a] → a
 lookupVarDeclsTy ident vardecls = typeVD $ head $ filter ((==ident).identVD) vardecls
