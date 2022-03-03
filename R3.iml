@@ -35,5 +35,6 @@
     <orderEntry type="library" name="clock-0.8.2" level="project" />
     <orderEntry type="library" name="html-1.0.1.2" level="project" />
     <orderEntry type="library" name="raw-strings-qq-1.1" level="project" />
+    <orderEntry type="library" name="prettyprinter-1.7.1" level="project" />
   </component>
 </module>

@@ -12,7 +12,7 @@ import Parsing
 import R3Monad
 import DataTree
 import AST
-import qualified Data.Map.Strict as ASTMap
+--import qualified Data.Map.Strict as ASTMap
 
 function_name = "_fpmul_parts"
 file_name = "test.c"
@@ -34,7 +34,7 @@ mainR3 = do
 			liftIO $ putStrLn errmsg
 			return $ ExitFailure 1
 		Right ast -> do
-			let Just fun_body = ASTMap.lookup function_name $ ASTMap.mapKeys nameIdent ast
+			let Just fun_body = lookup function_name ast
 			liftIO $ writeFile (function_name <.> "html") $ genericToHTMLString fun_body
 			return ExitSuccess
 

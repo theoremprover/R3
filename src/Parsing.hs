@@ -90,7 +90,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 	where
 
-	translunit_typeattrs = ASTMap.map identdecl2extdecl $ ASTMap.mapKeys cident2ident gObjs
+	translunit_typeattrs = map (\ (ident,decl) -> (cident2ident k,identdecl2extdecl decl)) $ ASTMap.assocs gObjs
 
 	ni2loc :: (CNode n) => n → Loc
 	ni2loc n = let ni = nodeInfo n in case posOf ni of
@@ -190,7 +190,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 	expr2ast (CUnary unop expr ni) = Unary unop' (expr2ast expr) Nothing (ni2loc ni) where
 		Just unop' = lookup unop [
 			(CPreIncOp,PreInc),(CPreDecOp,PreDec),(CPostIncOp,PostInc),(CPostDecOp,PostDec),(CAdrOp,AddrOf),
-			(CIndOp,Deref),(CPlusOp,Plus),(CMinOp,Minus),(CCompOp,ExOr),(CNegOp,Not) ]
+			(CIndOp,Deref),(CPlusOp,Plus),(CMinOp,Minus),(CCompOp,BitNeg),(CNegOp,Not) ]
 	expr2ast (CIndex arr index ni) = Index (expr2ast arr) (expr2ast index) Nothing (ni2loc ni)
 	expr2ast (CConst ctconst) = Constant const' (Just ty) (ni2loc ni) where
 		(const',ty,ni) = case ctconst of
