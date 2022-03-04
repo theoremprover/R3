@@ -90,7 +90,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 	where
 
-	translunit_typeattrs = map (\ (ident,decl) -> (cident2ident ident,identdecl2extdecl decl)) $ ASTMap.assocs gObjs
+	translunit_typeattrs :: TranslUnit TypeAttrs
+	translunit_typeattrs = map identdecl2extdecl $ ASTMap.elems gObjs
 
 	ni2loc :: (CNode n) => n → Loc
 	ni2loc n = let ni = nodeInfo n in case posOf ni of
@@ -246,11 +247,11 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 			resolve_sueref :: (HasSUERef a) => a → ZType
 			resolve_sueref hassueref = case ASTMap.lookup sueref gTags of
 				Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
-				Just (CompDef (CompType _ comptykind memberdecls attrs ni)) →
-					ZCompound (compkind2comptype comptykind)
+				Just (CompDef (CompType sueref comptykind memberdecls attrs ni)) →
+					ZCompound ((render.pretty) sueref) (compkind2comptype comptykind)
 						(map (infer_vardecl . (decl2vardecl ni)) memberdecls)
-				Just (EnumDef (EnumType _ enumerators attrs ni)) →
-					ZEnum $ for enumerators $ \ (Enumerator ident expr _ ni) →
+				Just (EnumDef (EnumType sueref enumerators attrs ni)) →
+					ZEnum ((render.pretty) sueref) $ for enumerators $ \ (Enumerator ident expr _ ni) →
 						(cident2ident ident,eval_const_expr expr)
 				where
 				sueref = sueRef hassueref
@@ -288,7 +289,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 	vardecl2envitem VarDeclaration{..} = (identVD,typeVD)
 
 	translunit_ztype :: TranslUnit ZType
-	translunit_ztype = ASTMap.map infer_extdecl translunit_typeattrs
+	translunit_ztype = map infer_extdecl translunit_typeattrs
 
 	global_tyenv :: TyEnv
 	global_tyenv = map (\ ExtDecl{..} → ( identVD varDeclED, ty2zty $ fromJust $ typeVD varDeclED )) translunit_typeattrs
@@ -341,7 +342,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 					AddrOf → ZPtr expr'_ty
 					Deref  → targettyZ expr'_ty
 					Not    → ZBool
-					op | op `elem` [Plus,Minus,ExOr,PreInc,PostInc,PreDec,PostDec]
+					op | op `elem` [Plus,Minus,BitNeg,PreInc,PostInc,PreDec,PostDec]
 					       → expr'_ty
 
 			Binary op expr1 expr2 Nothing loc → Binary op (mb_cast arg_ty expr1') (mb_cast arg_ty expr2') res_ty loc
@@ -369,8 +370,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 				where
 				expr' = τ expr
 				ty = lookupVarDeclsTy member_ident $ case (isptr,typeE expr') of
-					(True ,ZPtr (ZCompound _ elemtys)) → elemtys
-					(False,     (ZCompound _ elemtys)) → elemtys
+					(True ,ZPtr (ZCompound _ _ elemtys)) → elemtys
+					(False,     (ZCompound _ _ elemtys)) → elemtys
 
 			Var ident Nothing loc → Var ident ty loc
 				where
