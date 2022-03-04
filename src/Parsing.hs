@@ -6,7 +6,6 @@ module Parsing (
 	where
 
 import Language.C (parseCFile,CDecl,pretty)
---import "language-c" Language.C (parseCFile,CDecl,pretty)
 import Language.C.System.GCC (newGCC)
 import Language.C.Analysis.SemRep as SemRep hiding (Stmt,Expr)
 import Language.C.Analysis.DefTable (DefTable)
@@ -22,7 +21,8 @@ import Language.C.Syntax.Ops (assignBinop)
 import Language.C.Analysis.TypeUtils (getIntType,getFloatType,integral,floating)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.State.Lazy
-import Data.List (nub)
+import Data.List (nub,sortBy)
+import Data.Ord (comparing)
 import qualified Data.Map.Strict as ASTMap
 
 import qualified Text.PrettyPrint as TextPretty
@@ -31,7 +31,6 @@ import Prettyprinter
 
 import GlobDecls
 import AST
-import qualified Data.Map.Strict as ASTMap
 import R3Monad
 import MachineSpec
 import Utils
@@ -104,7 +103,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 	where
 
 	translunit_typeattrs :: TranslUnit TypeAttrs
-	translunit_typeattrs = map identdecl2extdecl $ ASTMap.elems gObjs
+	translunit_typeattrs = sortBy (comparing locED) $ map identdecl2extdecl $ ASTMap.elems gObjs
 
 	ni2loc :: (CNode n) => n → Loc
 	ni2loc n = let ni = nodeInfo n in case posOf ni of
@@ -162,7 +161,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 			Just e_stmt → stmt2ast e_stmt
 	stmt2ast (CExpr mb_expr ni) = case mb_expr of
 		Just expr -> ExprStmt (expr2ast expr) (ni2loc ni)
-		Nothing   -> ExprStmt (Constant (IntConst 99) intType (ni2loc ni)) (ni2loc ni)
+		Nothing   -> Compound [] (ni2loc ni)
 	stmt2ast (CWhile cond body False ni) = While (expr2ast cond) (stmt2ast body) (ni2loc ni)
 	stmt2ast (CWhile cond body True ni) = Compound [body',loop] (ni2loc ni) where
 		body' = stmt2ast body

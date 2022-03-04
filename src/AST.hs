@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE RecordWildCards,DeriveGeneric,TypeSynonymInstances,FlexibleInstances,UnicodeSyntax #-}
+{-# LANGUAGE RecordWildCards,DeriveGeneric,TypeSynonymInstances,FlexibleInstances,FlexibleContexts,UnicodeSyntax #-}
 
 module AST where
 
@@ -32,8 +32,8 @@ instance Pretty Ident where
 	pretty ident = pretty $ nameIdent ident
 
 data Loc =
-	Loc   { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } |
-	NoLoc { nolocDescrLoc :: String }
+	NoLoc { nolocDescrLoc :: String } |
+	Loc   { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int }
 	deriving (Eq,Ord,Generic)
 instance Show Loc where
 	show Loc{..}   = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
@@ -52,12 +52,12 @@ data ZType =
 	ZUnit | -- void is the unit type
 	ZBool |
 	ZInt       { sizeZ     :: Int,    isunsignedZ   :: Bool } |
-	ZEnum      { nameZ     :: String, elemsZ    :: [(Ident,Integer)] } |
+	ZEnum      { nameZ     :: String, elemsZ        :: [(Ident,Integer)] } |
 	ZFloat     { expbitsZ  :: Int,    mantissabitsZ :: Int } | -- (mantissabitsZ includes the hidden bit, but excludes sign bit)
 	ZArray     { elemtyZ   :: ZType,  arrsizeZ      :: Maybe Integer } |
 	ZPtr       { targettyZ :: ZType } |
 	ZCompound  { nameZ     :: String, comptyZ       :: CompoundType, elemtysZ :: [VarDeclaration ZType] } |
-	ZFun       { rettyZ    :: ZType,  isvariadicZ   :: Bool, argtysZ :: [ZType] } |
+	ZFun       { rettyZ    :: ZType,  isvariadicZ   :: Bool, argtysZ          :: [ZType] } |
 	ZUnhandled { descrZ    :: String }
 	deriving (Show,Generic,Eq,Ord)
 instance Pretty ZType where
@@ -83,10 +83,10 @@ data ExtDecl a = ExtDecl {
 	locED     :: Loc }
 	deriving (Show,Generic)
 instance (Pretty a) => Pretty (ExtDecl a) where
-	pretty (ExtDecl vardecl@VarDeclaration{..} body _) = commentExtDecl vardecl $ case body of
-		Left Nothing     → pretty vardecl <> semi
-		Left (Just expr) → pretty vardecl <+> equals <+> pretty expr <> semi
-		Right fundef     → pretty vardecl <+> pretty fundef
+	pretty (ExtDecl vardecl@VarDeclaration{..} body loc) = commentExtDecl vardecl $ case body of
+		Left Nothing     → pretty vardecl <> semi <+> locComment loc
+		Left (Just expr) → pretty vardecl <+> equals <+> pretty expr <> semi  <+> locComment loc
+		Right fundef     → pretty vardecl <+> pretty fundef  <+> locComment loc
 
 commentExtDecl vardecl doc = vcat [hardline,pretty comment,emptyDoc,doc]
 	where
@@ -189,36 +189,39 @@ instance Pretty Const where
 	pretty (StringConst s) = viaShow s
 
 data Stmt a =
-	Decls      { vardeclsS :: [VarDeclaration a], locS :: Loc } |
-	Label      { identS :: Ident, stmtS :: Stmt a, locS :: Loc } |
-	Compound   { stmtsS :: [Stmt a], locS :: Loc } |
-	IfThenElse { condS :: Expr a, thenstmtS :: Stmt a, elsestmtS :: Stmt a, locS :: Loc } |
-	ExprStmt   { exprS :: Expr a, locS :: Loc } |
-	While      { condS :: Expr a, bodyS :: Stmt a, locS :: Loc } |
-	Return     { mbexprS :: Maybe (Expr a), locS :: Loc } |
-	Continue   { locS :: Loc } |
-	Break      { locS :: Loc } |
-	Goto       { identS :: Ident, locS :: Loc }
+	Decls      { vardeclsS :: [VarDeclaration a], locS      :: Loc } |
+	Label      { identS    :: Ident,              stmtS     :: Stmt a, locS      :: Loc } |
+	Compound   { stmtsS    :: [Stmt a],           locS      :: Loc } |
+	IfThenElse { condS     :: Expr a,             thenstmtS :: Stmt a, elsestmtS :: Stmt a, locS :: Loc } |
+	ExprStmt   { exprS     :: Expr a,             locS      :: Loc } |
+	While      { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
+	Return     { mbexprS   :: Maybe (Expr a),     locS      :: Loc } |
+	Continue   { locS      :: Loc } |
+	Break      { locS      :: Loc } |
+	Goto       { identS    :: Ident,              locS      :: Loc }
 	deriving (Show,Generic)
 instance (Pretty a) => Pretty (Stmt a) where
-	pretty stmt = stmt_doc <+> fill 100 (pretty "//" <+> pretty (locS stmt)) where
+	pretty (Compound stmts _) = vcat [ nest 4 $ vcat $ lbrace : map pretty stmts, rbrace ]
+	pretty (IfThenElse cond then_s else_s loc) = vcat $ [ pretty "if" <> parens (pretty cond) <+> locComment loc, pretty then_s ] ++ case else_s of
+		Compound [] _ → []
+		else_stmt     → [ mb_singleline else_stmt $ vcat [ pretty "else", pretty else_stmt ] ]
+		where
+		mb_singleline :: (Stmt a) -> Doc ann -> Doc ann
+		mb_singleline comp doc = case comp of
+			Compound _ _ → doc
+			_            → nest 4 doc
+	pretty (While cond body loc) = vcat [ pretty "while" <> parens (pretty cond) <+> locComment loc, pretty body ]
+	pretty stmt = hcat [ stmt_doc, locComment (locS stmt) ] where
 		stmt_doc = case stmt of
 			Decls vardecls _                → vcat $ punctuate semi $ map pretty vardecls
 			Label ident stmt _              → vcat [ pretty ident <> colon, pretty stmt ]
-			Compound stmts _                → vcat [ nest 4 $ vcat $ lbrace : map pretty stmts, rbrace ]
-			IfThenElse cond then_s else_s _ → vcat $ [ pretty "if" <> parens (pretty cond), mb_singleline then_s ] ++ case else_s of
-				Compound [] _ → []
-				else_stmt     → [ pretty "else", mb_singleline else_stmt ]
-				where
-				mb_singleline comp = case comp of
-					Compound _ _ → pretty comp
-					singlestmt   → nest 4 $ pretty singlestmt
 			ExprStmt expr _                 → pretty expr <> semi
-			While cond body _               → vcat [ pretty "while" <> parens (pretty cond), pretty body ]
 			Return mb_expr _                → pretty "return" <> parens (maybe emptyDoc pretty mb_expr) <> semi
 			Continue _                      → pretty "continue" <> semi
 			Break _                         → pretty "break" <> semi
 			Goto ident _                    → pretty "goto" <+> pretty ident <> semi
+
+locComment loc = column $ \ col → (pretty $ take (120 - col) (repeat ' ') ++ "// ----------") <+> pretty loc
 
 {-
 	AST transformations:
