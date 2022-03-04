@@ -1,4 +1,4 @@
-{-# LANGUAGE PackageImports,OverloadedStrings,RankNTypes #-}
+{-# LANGUAGE PackageImports,OverloadedStrings,RankNTypes,RecordWildCards #-}
 {-# OPTIONS_GHC -fno-warn-tabs #-}
 
 module GlobDecls where
@@ -10,14 +10,17 @@ import Language.C.Data.Ident
 import Text.Blaze.Html4.Strict as H
 import Text.Blaze.Html.Renderer.String
 import Control.Monad
-import Data.Map.Strict as Map
+import qualified Data.Map.Strict as Map
 import Text.PrettyPrint
 
 import AST
 
 showMapTable :: (k -> String) -> (v -> String) -> Map.Map k v -> Html
-showMapTable show_k show_v mapping = table $
-	forM_ (assocs mapping) $ \ (key,val) -> tr $ do
+showMapTable show_k show_v mapping = showListTable show_k show_v (Map.assocs mapping)
+
+showListTable :: (k -> String) -> (v -> String) -> [(k,v)] -> Html
+showListTable show_k show_v assocs = table $
+	forM_ assocs $ \ (key,val) -> tr $ do
 		td $ toHtml $ show_k key
 		td $ preEscapedToHtml ("&#x21a6;"::String)
 		td $ toHtml $ show_v val
@@ -41,4 +44,6 @@ astToHTMLString ast = renderHtml $ docTypeHtml $ do
 		title "AST"
 	body $ do
 		h1 "AST"
-		showMapTable show show ast
+		showListTable show show (Prelude.map extdecl2assoc ast)
+	where
+	extdecl2assoc extdecl@(ExtDecl{..}) = (identVD varDeclED,extdecl)

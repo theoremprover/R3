@@ -16,6 +16,8 @@ testG = [[1,2,3],[4,5,6]] :: [[Int]]
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic)
 instance Eq Ident where
 	ident1 == ident2 = nameIdent ident1 == nameIdent ident2 && idIdent ident1 == idIdent ident2
+instance Pretty Ident where
+	pretty ident = pretty $ nameIdent ident
 
 data Loc =
 	Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } |
@@ -62,7 +64,7 @@ instance (Pretty a) => Pretty (ExtDecl a) where
 
 data FunDef a = FunDef [VarDeclaration a] (Stmt a)
 	deriving (Show,Generic)
-instance (Pretty a) => Pretty (Fundef a) where
+instance (Pretty a) => Pretty (FunDef a) where
 	pretty (FunDef argdecls body) = vcat [ parens (hsep $ punctuate comma $ map pretty argdecls), pretty body ]
 
 data Expr a =
@@ -85,9 +87,9 @@ instance (Pretty a) => Pretty (Expr a) where
 	pretty (Unary op expr _ _) | op `elem` [PostInc,PostDec] = pretty expr <> pretty op
 	pretty (Unary op expr _ _) = pretty op <> pretty expr 
 	pretty (Binary op expr1 expr2 _ _) = parens $ pretty expr1 <+> pretty op <+> pretty expr2
-	pretty (CondExpr cond thene elsee _ _) = parens $ pretty cond <+> text "?" <+> pretty expr1 <+> colon <+> pretty expr2
+	pretty (CondExpr cond then_e else_e _ _) = parens $ pretty cond <+> pretty "?" <+> pretty then_e <+> colon <+> pretty else_e
 	pretty (Index expr ix _ _) = pretty expr <> brackets (pretty ix)
-	pretty (Member expr member isptr _ _) = pretty expr <> if isptr then text "->" else dot <> pretty member
+	pretty (Member expr member isptr _ _) = pretty expr <> if isptr then pretty "->" else dot <> pretty member
 	pretty (Var ident _ _) = pretty ident
 	pretty (Constant con _ _) = pretty con
 	pretty (Comp elems _ _) = braces $ hsep $ punctuate comma $ map pretty elems
@@ -96,40 +98,40 @@ data UnaryOp = AddrOf | Deref | Plus | Minus | BitNeg | Not |
 	PreInc | PostInc | PreDec | PostDec
 	deriving (Show,Generic,Eq)
 instance Pretty UnaryOp where
-	pretty AddrOf = text "&"
-	pretty Deref = text "*"
-	pretty Plus = text "+"
-	pretty Minus = text "-"
-	pretty BitNeg = text "~"
-	pretty Not = text "!"
-	pretty PreInc = text "++"
-	pretty PostInc = text "++"
-	pretty PreDec = text "--"
-	pretty PostDec = text "--"
+	pretty AddrOf = pretty "&"
+	pretty Deref = pretty "*"
+	pretty Plus = pretty "+"
+	pretty Minus = pretty "-"
+	pretty BitNeg = pretty "~"
+	pretty Not = pretty "!"
+	pretty PreInc = pretty "++"
+	pretty PostInc = pretty "++"
+	pretty PreDec = pretty "--"
+	pretty PostDec = pretty "--"
 
 data BinaryOp =
 	Mul | Div | Add | Sub | Rmd | Shl | Shr | BitAnd | BitOr | BitXOr |
 	Less | Equals | NotEquals | LessEq | Greater | GreaterEq | And | Or	
 	deriving (Show,Generic,Eq)
 instance Pretty BinaryOp where
-	pretty Mul = text "&"
-	pretty Div = text "*"
-	pretty Add = text "+"
-	pretty Sub = text "-"
-	pretty Rmd = text "%"
-	pretty Shl = text "<<"
-	pretty Shr = text ">>"
-	pretty BitAnd = text "&"
-	pretty BitOr = text "|"
-	pretty BitXOr = text "^"
-	pretty Less = text "<"
-	pretty Equals = text "=="
-	pretty NotEquals = text "!="
-	pretty LessEq = text "<="
-	pretty Greater = text ">"
-	pretty GreaterEq = text ">="
-	pretty And = text "&&"
-	pretty Or = text "||"
+	pretty Mul = pretty "&"
+	pretty Div = pretty "*"
+	pretty Add = pretty "+"
+	pretty Sub = pretty "-"
+	pretty Rmd = pretty "%"
+	pretty Shl = pretty "<<"
+	pretty Shr = pretty ">>"
+	pretty BitAnd = pretty "&"
+	pretty BitOr = pretty "|"
+	pretty BitXOr = pretty "^"
+	pretty Less = pretty "<"
+	pretty Equals = pretty "=="
+	pretty NotEquals = pretty "!="
+	pretty LessEq = pretty "<="
+	pretty Greater = pretty ">"
+	pretty GreaterEq = pretty ">="
+	pretty And = pretty "&&"
+	pretty Or = pretty "||"
 
 data VarDeclaration a = VarDeclaration {
 	identVD      :: Ident,
@@ -152,8 +154,8 @@ data Const =
 instance Pretty Const where
 	pretty (IntConst i) = pretty i
 	pretty (CharConst c) = pretty c
-	pretty (FloatConst s) = text s
-	pretty (StringConst s) = text $ show s
+	pretty (FloatConst s) = pretty s
+	pretty (StringConst s) = pretty $ show s
 
 data Stmt a =
 	Decls [VarDeclaration a] Loc |
@@ -168,10 +170,17 @@ data Stmt a =
 	Goto Ident Loc
 	deriving (Show,Generic)
 instance (Pretty a) => Pretty (Stmt a) where
-	pretty (Decls vardecls) _ = vcat [ map pretty vardecls ]
-	pretty (Label ident stmt _) = pretty ident <+> colon <+> pretty stmt
-	pretty (Compound stmts _) = braces $ vcat $ map pretty stmts
-	pretty (IfThenElse cond then_s else_s _) = 
+	pretty (Decls vardecls _) = vcat $ punctuate semi $ map pretty vardecls
+	pretty (Label ident stmt _) = vcat [ pretty ident <> colon, pretty stmt ]
+	pretty (Compound stmts _) = braces $ nest 4 $ vcat $ map pretty stmts
+	pretty (IfThenElse cond then_s else_s _) = vcat [ pretty "if" <> parens (pretty cond),
+		pretty then_s, pretty "else", pretty else_s ]
+	pretty (ExprStmt expr _) = pretty expr <> semi
+	pretty (While cond body _) = vcat [ pretty "while" <> parens (pretty cond), pretty body ]
+	pretty (Return mb_expr _) = pretty "return" <> parens (maybe emptyDoc pretty mb_expr)
+	pretty (Continue _) = pretty "continue" <> semi
+	pretty (Break _) = pretty "break" <> semi
+	pretty (Goto ident _) = pretty "goto" <+> pretty ident <> semi
 
 {-
 	AST transformations:

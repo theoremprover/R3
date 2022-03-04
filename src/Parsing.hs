@@ -90,7 +90,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 	where
 
-	translunit_typeattrs = map (\ (ident,decl) -> (cident2ident k,identdecl2extdecl decl)) $ ASTMap.assocs gObjs
+	translunit_typeattrs = map (\ (ident,decl) -> (cident2ident ident,identdecl2extdecl decl)) $ ASTMap.assocs gObjs
 
 	ni2loc :: (CNode n) => n → Loc
 	ni2loc n = let ni = nodeInfo n in case posOf ni of
@@ -287,11 +287,11 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 	vardecl2envitem :: VarDeclaration ZType → TyEnvItem
 	vardecl2envitem VarDeclaration{..} = (identVD,typeVD)
 
-	global_tyenv :: TyEnv
-	global_tyenv = ASTMap.assocs $ ASTMap.map (ty2zty.fromJust.typeVD.varDeclED) translunit_typeattrs
-
 	translunit_ztype :: TranslUnit ZType
 	translunit_ztype = ASTMap.map infer_extdecl translunit_typeattrs
+
+	global_tyenv :: TyEnv
+	global_tyenv = map (\ ExtDecl{..} → ( identVD varDeclED, ty2zty $ fromJust $ typeVD varDeclED )) translunit_typeattrs
 
 	infer_extdecl :: ExtDecl TypeAttrs → ExtDecl ZType
 	infer_extdecl (ExtDecl vardecl value loc) = ExtDecl vardecl' value' loc
