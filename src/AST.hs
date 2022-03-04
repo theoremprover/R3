@@ -5,7 +5,7 @@ module AST where
 
 import GHC.Generics
 import Prettyprinter
-import qualified Text.PrettyPrint as TextPretty
+import Prettyprinter.Render.String
 
 
 {-
@@ -14,6 +14,9 @@ testTe = Te [ Te [TeInt 1,TeInt 2], Te [ TeInt 3, TeInt 4 ]]
 
 testG = [[1,2,3],[4,5,6]] :: [[Int]]
 -}
+
+prettyTranslUnitString :: (Pretty a) => TranslUnit a -> String
+prettyTranslUnitString translunit = renderString $ layoutPretty (LayoutOptions $ AvailablePerLine 120 0.4) (pretty translunit)
 
 type TranslUnit a = [ExtDecl a]
 instance {-# OVERLAPS #-} (Pretty a) => Pretty (TranslUnit a) where
@@ -29,12 +32,15 @@ instance Pretty Ident where
 	pretty ident = pretty $ nameIdent ident
 
 data Loc =
-	Loc { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } |
-	NoLoc String
+	Loc   { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int } |
+	NoLoc { nolocDescrLoc :: String }
 	deriving (Eq,Ord,Generic)
 instance Show Loc where
 	show Loc{..}   = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
 	show (NoLoc s) = s
+instance Pretty Loc where
+	pretty noloc@NoLoc{..} = viaShow noloc
+	pretty Loc{..}         = pretty $ "line " ++ show lineLoc
 
 data CompoundType = Struct | Union deriving (Show,Eq,Ord,Generic)
 instance Pretty CompoundType where
@@ -57,9 +63,9 @@ data ZType =
 instance Pretty ZType where
 	pretty ZUnit          = pretty "void"
 	pretty ZBool          = pretty "bool"
-	pretty ZInt{..}       = pretty (if isunsignedZ then "u" else "") <> pretty "int" <> pretty (show sizeZ)
+	pretty ZInt{..}       = pretty (if isunsignedZ then "u" else "") <> pretty "int" <> viaShow sizeZ
 	pretty ZEnum{..}      = pretty "enum" <+> pretty nameZ
-	pretty ZFloat{..}     = pretty "float" <> pretty (show $ mantissabitsZ+expbitsZ)
+	pretty ZFloat{..}     = pretty "float" <> viaShow (mantissabitsZ+expbitsZ)
 	pretty ZArray{..}     = pretty elemtyZ <> brackets emptyDoc
 	pretty ZPtr{..}       = pretty targettyZ <> pretty "*"
 	pretty ZCompound{..}  = pretty comptyZ <+> pretty nameZ
@@ -77,17 +83,17 @@ data ExtDecl a = ExtDecl {
 	locED     :: Loc }
 	deriving (Show,Generic)
 instance (Pretty a) => Pretty (ExtDecl a) where
-	pretty (ExtDecl vardecl body _) = commentExtDecl vardecl $ case body of
+	pretty (ExtDecl vardecl@VarDeclaration{..} body _) = commentExtDecl vardecl $ case body of
 		Left Nothing     → pretty vardecl <> semi
 		Left (Just expr) → pretty vardecl <+> equals <+> pretty expr <> semi
-		Right fundef     → pretty vardecl <+> pretty (identVD vardecl) <> pretty fundef
+		Right fundef     → pretty vardecl <+> pretty fundef
 
 commentExtDecl vardecl doc = vcat [hardline,pretty comment,emptyDoc,doc]
 	where
 	p1 = "// ==== "
 	p2 = " " ++ repeat '='
 	name = nameIdent $ identVD vardecl
-	comment = p1 ++ name ++ take (80 - (length p1 + length name)) p2
+	comment = p1 ++ name ++ take (120 - (length p1 + length name)) p2
 
 data VarDeclaration a = VarDeclaration {
 	identVD      :: Ident,
@@ -180,32 +186,39 @@ instance Pretty Const where
 	pretty (IntConst i)    = pretty i
 	pretty (CharConst c)   = pretty c
 	pretty (FloatConst s)  = pretty s
-	pretty (StringConst s) = pretty $ show s
+	pretty (StringConst s) = viaShow s
 
 data Stmt a =
-	Decls [VarDeclaration a] Loc |
-	Label Ident (Stmt a) Loc |
-	Compound [Stmt a] Loc |
-	IfThenElse (Expr a) (Stmt a) (Stmt a) Loc |
-	ExprStmt (Expr a) Loc |
-	While (Expr a) (Stmt a) Loc |
-	Return (Maybe (Expr a)) Loc |
-	Continue Loc |
-	Break Loc |
-	Goto Ident Loc
+	Decls      { vardeclsS :: [VarDeclaration a], locS :: Loc } |
+	Label      { identS :: Ident, stmtS :: Stmt a, locS :: Loc } |
+	Compound   { stmtsS :: [Stmt a], locS :: Loc } |
+	IfThenElse { condS :: Expr a, thenstmtS :: Stmt a, elsestmtS :: Stmt a, locS :: Loc } |
+	ExprStmt   { exprS :: Expr a, locS :: Loc } |
+	While      { condS :: Expr a, bodyS :: Stmt a, locS :: Loc } |
+	Return     { mbexprS :: Maybe (Expr a), locS :: Loc } |
+	Continue   { locS :: Loc } |
+	Break      { locS :: Loc } |
+	Goto       { identS :: Ident, locS :: Loc }
 	deriving (Show,Generic)
 instance (Pretty a) => Pretty (Stmt a) where
-	pretty (Decls vardecls _)                = vcat $ punctuate semi $ map pretty vardecls
-	pretty (Label ident stmt _)              = vcat [ pretty ident <> colon, pretty stmt ]
-	pretty (Compound stmts _)                = vcat [ nest 4 $ vcat $ lbrace : map pretty stmts, rbrace ]
-	pretty (IfThenElse cond then_s else_s _) = vcat [ pretty "if" <> parens (pretty cond),
-                                                   pretty then_s, pretty "else", pretty else_s ]
-	pretty (ExprStmt expr _)                 = pretty expr <> semi
-	pretty (While cond body _)               = vcat [ pretty "while" <> parens (pretty cond), pretty body ]
-	pretty (Return mb_expr _)                = pretty "return" <> parens (maybe emptyDoc pretty mb_expr) <> semi
-	pretty (Continue _)                      = pretty "continue" <> semi
-	pretty (Break _)                         = pretty "break" <> semi
-	pretty (Goto ident _)                    = pretty "goto" <+> pretty ident <> semi
+	pretty stmt = stmt_doc <+> fill 100 (pretty "//" <+> pretty (locS stmt)) where
+		stmt_doc = case stmt of
+			Decls vardecls _                → vcat $ punctuate semi $ map pretty vardecls
+			Label ident stmt _              → vcat [ pretty ident <> colon, pretty stmt ]
+			Compound stmts _                → vcat [ nest 4 $ vcat $ lbrace : map pretty stmts, rbrace ]
+			IfThenElse cond then_s else_s _ → vcat $ [ pretty "if" <> parens (pretty cond), mb_singleline then_s ] ++ case else_s of
+				Compound [] _ → []
+				else_stmt     → [ pretty "else", mb_singleline else_stmt ]
+				where
+				mb_singleline comp = case comp of
+					Compound _ _ → pretty comp
+					singlestmt   → nest 4 $ pretty singlestmt
+			ExprStmt expr _                 → pretty expr <> semi
+			While cond body _               → vcat [ pretty "while" <> parens (pretty cond), pretty body ]
+			Return mb_expr _                → pretty "return" <> parens (maybe emptyDoc pretty mb_expr) <> semi
+			Continue _                      → pretty "continue" <> semi
+			Break _                         → pretty "break" <> semi
+			Goto ident _                    → pretty "goto" <+> pretty ident <> semi
 
 {-
 	AST transformations:

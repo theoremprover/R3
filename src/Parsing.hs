@@ -23,8 +23,11 @@ import Language.C.Analysis.TypeUtils (getIntType,getFloatType,integral,floating)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.State.Lazy
 import Data.List (nub)
-import Text.PrettyPrint (render)
 import qualified Data.Map.Strict as ASTMap
+
+import qualified Text.PrettyPrint as TextPretty
+import qualified Language.C.Pretty as LangCPretty
+import Prettyprinter
 
 import GlobDecls
 import AST
@@ -56,12 +59,16 @@ deriving instance Generic Storage
 deriving instance Generic Linkage
 deriving instance Generic VarName
 
-{-
-instance Pretty Type where
-	pretty ty = pretty $ render $ TextPretty.pretty ty
--}
 
-parseFile :: FilePath → R3 (Either String (TranslUnit TypeAttrs,TranslUnit ZType))
+instance Pretty Type where
+	pretty ty = Prettyprinter.pretty $ renderpretty ty
+instance Pretty Attr where
+	pretty attr = Prettyprinter.pretty $ renderpretty attr
+
+renderpretty ::(LangCPretty.Pretty a) => a -> String
+renderpretty a = TextPretty.render $ LangCPretty.pretty $ a
+
+parseFile :: FilePath → R3 (Either String (TranslUnit ZType))
 parseFile filepath = do
 	gcc <- gets compilerR3
 	liftIO $ parseCFile (newGCC gcc) Nothing [] filepath >>= \case
@@ -73,13 +80,15 @@ parseFile filepath = do
 				deftable <- getDefTable
 				return (globaldecls,deftable)
 				of
-				Left errs -> return $ Left $ "HARD ERRORS:\n" ++ unlines (map show errs)
+				Left errs → return $ Left $ "HARD ERRORS:\n" ++ unlines (map show errs)
 				Right ((globaldecls,deftable),_) → do
 					liftIO $ writeFile "GlobDecls.html" $ globdeclsToHTMLString globaldecls
 					machinespec <- getMachineSpec gcc
-					let ast = globDecls2AST machinespec deftable globaldecls
+					let (ast_typeattr,ast) = globDecls2AST machinespec deftable globaldecls
 					liftIO $ writeFile "AST.html" $ astToHTMLString ast
-					return $ Right (ast)
+					liftIO $ writeFile "translunit.TypeAttr" $ prettyTranslUnitString ast_typeattr
+					liftIO $ writeFile "translunit.ZType" $ prettyTranslUnitString ast
+					return $ Right ast
 
 type TypeAttrs = Maybe (Type,Attributes)
 
@@ -89,8 +98,8 @@ type TyEnv = [TyEnvItem]
 showTyEnv :: TyEnv -> String
 showTyEnv tyenv = unlines $ map show tyenv
 
-globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit ZType
-globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
+globDecls2AST :: MachineSpec → DefTable → GlobalDecls → (TranslUnit TypeAttrs,TranslUnit ZType)
+globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,translunit_ztype)
 
 	where
 
@@ -115,10 +124,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 		where
 		vardecls = for triples $ \ (Just cdeclr@(CDeclr (Just cident) _ _ _ ni),mb_init,mb_expr) →
 			let ty = getCDeclType $ CDecl declspecs [(Just cdeclr,mb_init,mb_expr)] ni in
-				VarDeclaration (cident2ident cident) ((render.pretty) ty) (Just (ty,[])) (ni2loc ni)
+				VarDeclaration (cident2ident cident) (renderpretty ty) (Just (ty,[])) (ni2loc ni)
 
 	decl2vardecl :: (Declaration d) => NodeInfo → d → VarDeclaration TypeAttrs
-	decl2vardecl ni decl = VarDeclaration (cident2ident ident) ((render.pretty) ty) (Just (ty,attrs)) (ni2loc ni)
+	decl2vardecl ni decl = VarDeclaration (cident2ident ident) (renderpretty ty) (Just (ty,attrs)) (ni2loc ni)
 		where
 		VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty = getVarDecl decl
 
@@ -212,7 +221,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 
 	--------------
 
-	intTy  = ZInt intSize True
+	intTy  = ZInt intSize True :: ZType
 
 	ty2zty :: (Type,Attributes) → ZType
 	ty2zty (ty,attrs) = case ty of
@@ -244,7 +253,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 			TyVoid             → ZUnit
 			TyEnum enumtyperef → resolve_sueref enumtyperef
 			TyComp comptyperef → resolve_sueref comptyperef
-			_                  → ZUnhandled $ (render.pretty) ty
+			_                  → ZUnhandled $ renderpretty ty
 
 			where
 
@@ -252,10 +261,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = translunit_ztype
 			resolve_sueref hassueref = case ASTMap.lookup sueref gTags of
 				Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
 				Just (CompDef (CompType sueref comptykind memberdecls attrs ni)) →
-					ZCompound ((render.pretty) sueref) (compkind2comptype comptykind)
+					ZCompound (renderpretty sueref) (compkind2comptype comptykind)
 						(map (infer_vardecl . (decl2vardecl ni)) memberdecls)
 				Just (EnumDef (EnumType sueref enumerators attrs ni)) →
-					ZEnum ((render.pretty) sueref) $ for enumerators $ \ (Enumerator ident expr _ ni) →
+					ZEnum (renderpretty sueref) $ for enumerators $ \ (Enumerator ident expr _ ni) →
 						(cident2ident ident,eval_const_expr expr)
 				where
 				sueref = sueRef hassueref
