@@ -5,7 +5,9 @@ module AST where
 
 import GHC.Generics
 import Prettyprinter
-import Data.List (intersperse)
+import qualified Text.PrettyPrint as TextPretty
+
+
 {-
 data Te = Te [Te] | TeInt Int deriving (Show,Generic)
 testTe = Te [ Te [TeInt 1,TeInt 2], Te [ TeInt 3, TeInt 4 ]]
@@ -76,9 +78,9 @@ data ExtDecl a = ExtDecl {
 	deriving (Show,Generic)
 instance (Pretty a) => Pretty (ExtDecl a) where
 	pretty (ExtDecl vardecl body _) = commentExtDecl vardecl $ case body of
-		Left Nothing     → pretty vardecl
-		Left (Just expr) → pretty vardecl <+> equals <+> pretty expr
-		Right fundef     → pretty vardecl <> pretty fundef
+		Left Nothing     → pretty vardecl <> semi
+		Left (Just expr) → pretty vardecl <+> equals <+> pretty expr <> semi
+		Right fundef     → pretty vardecl <+> pretty (identVD vardecl) <> pretty fundef
 
 commentExtDecl vardecl doc = vcat [hardline,pretty comment,emptyDoc,doc]
 	where

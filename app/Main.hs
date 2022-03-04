@@ -33,8 +33,9 @@ mainR3 = do
 		Left errmsg -> do
 			liftIO $ putStrLn errmsg
 			return $ ExitFailure 1
-		Right ast -> do
-			liftIO $ writeFile (function_name <.> "translunit") $ show $ pretty ast
+		Right (ast_typeattr,ast_ztype) -> do
+			liftIO $ writeFile ("translunit" <.> "TypeAttr") $ show $ pretty ast_typeattr
+			liftIO $ writeFile ("translunit" <.> "ZType") $ show $ pretty ast_ztype
 			let fun_body = lookupExtDef function_name ast
 			liftIO $ writeFile (function_name <.> "html") $ genericToHTMLString fun_body
 			return ExitSuccess

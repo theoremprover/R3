@@ -56,8 +56,12 @@ deriving instance Generic Storage
 deriving instance Generic Linkage
 deriving instance Generic VarName
 
+{-
+instance Pretty Type where
+	pretty ty = pretty $ render $ TextPretty.pretty ty
+-}
 
-parseFile :: FilePath → R3 (Either String (TranslUnit ZType))
+parseFile :: FilePath → R3 (Either String (TranslUnit TypeAttrs,TranslUnit ZType))
 parseFile filepath = do
 	gcc <- gets compilerR3
 	liftIO $ parseCFile (newGCC gcc) Nothing [] filepath >>= \case
@@ -75,7 +79,7 @@ parseFile filepath = do
 					machinespec <- getMachineSpec gcc
 					let ast = globDecls2AST machinespec deftable globaldecls
 					liftIO $ writeFile "AST.html" $ astToHTMLString ast
-					return $ Right ast
+					return $ Right (ast)
 
 type TypeAttrs = Maybe (Type,Attributes)
 
