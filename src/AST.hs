@@ -15,15 +15,64 @@ testTe = Te [ Te [TeInt 1,TeInt 2], Te [ TeInt 3, TeInt 4 ]]
 testG = [[1,2,3],[4,5,6]] :: [[Int]]
 -}
 
-prettyTranslUnitString :: (Pretty a) => TranslUnit a -> String
+type AST               = TranslUnit ZType
+type ExtDeclAST        = ExtDecl ZType
+type ExprAST           = Expr ZType
+type StmtAST           = Stmt ZType
+type VarDeclarationAST = VarDeclaration ZType
+type FunDefAST         = FunDef ZType
+
+forEachExtDecl :: AST → (ExtDeclAST → ExtDeclAST) → AST
+forEachExtDecl ast f = map f ast
+
+
+prettyTranslUnitString :: (Pretty a) => TranslUnit a → String
 prettyTranslUnitString translunit = renderString $ layoutPretty (LayoutOptions $ AvailablePerLine 120 0.4) (pretty translunit)
 
 type TranslUnit a = [ExtDecl a]
 instance {-# OVERLAPS #-} (Pretty a) => Pretty (TranslUnit a) where
 	pretty translunit = vcat $ map pretty translunit
 
-lookupExtDef :: String -> TranslUnit a -> ExtDecl a
+lookupExtDef :: String → TranslUnit a → ExtDecl a
 lookupExtDef name translunit = head $ filter ((==name).nameIdent.identVD.varDeclED) translunit
+
+data ExtDecl a = ExtDecl {
+	varDeclED :: VarDeclaration a,
+	-- AST contains variable declarations, each of them having either
+	-- 1. maybe an initializer (i.e. a variable declaration), or
+	-- 2. a statement as body of the defined function
+	--    (the arguments and their types are in the type of the function identifier)
+	bodyED    :: Either (Maybe (Expr a)) (FunDef a),
+	locED     :: Loc }
+	deriving (Show,Generic)
+instance (Pretty a) => Pretty (ExtDecl a) where
+	pretty (ExtDecl vardecl@VarDeclaration{..} body loc) = commentExtDecl vardecl $ case body of
+		Left Nothing     → pretty vardecl <> semi <+> locComment loc
+		Left (Just expr) → pretty vardecl <+> equals <+> pretty expr <> semi  <+> locComment loc
+		Right fundef     → pretty vardecl <+> pretty fundef  <+> locComment loc
+
+commentExtDecl vardecl doc = vcat [hardline,pretty comment,emptyDoc,doc]
+	where
+	p1 = "// ==== "
+	p2 = " " ++ repeat '='
+	name = nameIdent $ identVD vardecl
+	comment = p1 ++ name ++ take (120 - (length p1 + length name)) p2
+
+data VarDeclaration a = VarDeclaration {
+	identVD      :: Ident,
+	sourceTypeVD :: String,
+	typeVD       :: a,
+	locVD        :: Loc }
+	deriving (Show,Generic,Ord)
+instance (Eq a) => Eq (VarDeclaration a) where
+	(VarDeclaration ident1 _ ty1 _) == (VarDeclaration ident2 _ ty2 _) = ident1==ident2 && ty1==ty2
+instance (Pretty a) => Pretty (VarDeclaration a) where
+	pretty (VarDeclaration ident _ ty _) = pretty ty <+> pretty ident
+
+data FunDef a = FunDef [VarDeclaration a] (Stmt a)
+	deriving (Show,Generic)
+instance (Pretty a) => Pretty (FunDef a) where
+	pretty (FunDef argdecls body) = vcat [ parens (hsep $ punctuate comma $ map pretty argdecls), pretty body ]
 
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic)
 instance Eq Ident where
@@ -72,44 +121,6 @@ instance Pretty ZType where
 	pretty ZFun{..}       = (if isvariadicZ then pretty "variadic" <+> emptyDoc else emptyDoc) <> pretty rettyZ <+>
                                 parens (hcat $ punctuate comma $ map pretty argtysZ)
 	pretty ZUnhandled{..} = pretty "UNHANDLED" <+> pretty descrZ
-
-data ExtDecl a = ExtDecl {
-	varDeclED :: VarDeclaration a,
-	-- AST contains variable declarations, each of them having either
-	-- 1. maybe an initializer (i.e. a variable declaration), or
-	-- 2. a statement as body of the defined function
-	--    (the arguments and their types are in the type of the function identifier)
-	bodyED    :: Either (Maybe (Expr a)) (FunDef a),
-	locED     :: Loc }
-	deriving (Show,Generic)
-instance (Pretty a) => Pretty (ExtDecl a) where
-	pretty (ExtDecl vardecl@VarDeclaration{..} body loc) = commentExtDecl vardecl $ case body of
-		Left Nothing     → pretty vardecl <> semi <+> locComment loc
-		Left (Just expr) → pretty vardecl <+> equals <+> pretty expr <> semi  <+> locComment loc
-		Right fundef     → pretty vardecl <+> pretty fundef  <+> locComment loc
-
-commentExtDecl vardecl doc = vcat [hardline,pretty comment,emptyDoc,doc]
-	where
-	p1 = "// ==== "
-	p2 = " " ++ repeat '='
-	name = nameIdent $ identVD vardecl
-	comment = p1 ++ name ++ take (120 - (length p1 + length name)) p2
-
-data VarDeclaration a = VarDeclaration {
-	identVD      :: Ident,
-	sourceTypeVD :: String,
-	typeVD       :: a,
-	locVD        :: Loc }
-	deriving (Show,Generic,Ord)
-instance (Eq a) => Eq (VarDeclaration a) where
-	(VarDeclaration ident1 _ ty1 _) == (VarDeclaration ident2 _ ty2 _) = ident1==ident2 && ty1==ty2
-instance (Pretty a) => Pretty (VarDeclaration a) where
-	pretty (VarDeclaration ident _ ty _) = pretty ty <+> pretty ident
-
-data FunDef a = FunDef [VarDeclaration a] (Stmt a)
-	deriving (Show,Generic)
-instance (Pretty a) => Pretty (FunDef a) where
-	pretty (FunDef argdecls body) = vcat [ parens (hsep $ punctuate comma $ map pretty argdecls), pretty body ]
 
 data Expr a =
 	Assign   { lexprE :: Expr a,   exprE   :: Expr a,   typeE  :: a,      locE  :: Loc            } |
@@ -222,14 +233,3 @@ instance (Pretty a) => Pretty (Stmt a) where
 			Goto ident _                    → pretty "goto" <+> pretty ident <> semi
 
 locComment loc = column $ \ col → (pretty $ take (120 - col) (repeat ' ') ++ "// ----------") <+> pretty loc
-
-{-
-	AST transformations:
-
-	expand vardecls into multiple DECLs
-	rewrite loops to While
-	rewrite Neq to Not equal
-	rewrite expressions containing side effects
-	expand CondExprs to IfThenElse
-	type annotation
--}

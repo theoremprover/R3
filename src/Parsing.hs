@@ -67,7 +67,7 @@ instance Pretty Attr where
 renderpretty ::(LangCPretty.Pretty a) => a -> String
 renderpretty a = TextPretty.render $ LangCPretty.pretty $ a
 
-parseFile :: FilePath → R3 (Either String (TranslUnit ZType))
+parseFile :: FilePath → R3 (Either String AST)
 parseFile filepath = do
 	gcc <- gets compilerR3
 	liftIO $ parseCFile (newGCC gcc) Nothing [] filepath >>= \case
@@ -300,7 +300,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 	vardecl2envitem :: VarDeclaration ZType → TyEnvItem
 	vardecl2envitem VarDeclaration{..} = (identVD,typeVD)
 
-	translunit_ztype :: TranslUnit ZType
+	translunit_ztype :: AST
 	translunit_ztype = map infer_extdecl translunit_typeattrs
 
 	global_tyenv :: TyEnv
