@@ -35,7 +35,8 @@ mainR3 = do
 			liftIO $ putStrLn errmsg
 			return $ ExitFailure 1
 		Right ast -> do
-			let fun_body = lookupExtDef function_name ast
+			let ast' = transformAST ast
+			let fun_body = lookupExtDef function_name ast'
 			liftIO $ writeFile (function_name <.> "html") $ genericToHTMLString fun_body
 			return ExitSuccess
 
