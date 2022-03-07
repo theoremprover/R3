@@ -9,8 +9,10 @@ import AST
 	AST transformations:
 
 	rewrite Neq to Not equal
-	rewrite expressions containing side effects
+	elimination of expressions with side effects (assignments)
 	expand CondExprs to IfThenElse
+	rewrite switch/case to if/then/else
+	rewrite continue
 -}
 
 {-
@@ -25,6 +27,26 @@ if(x==3) { x = x + 1; a = 3*x; }
 else { a = 2*y; y = y + 1; }
 
 Sequence Points!
+
+... ( C ? A : B ) ...
+
+~>  
+
+if C then c = A; else c = B;
+... c ...
+
+
+int a = 3;
+int* p = &a;
+*p = 2;
+return a;
+
+
+int a = 3;
+int b = 2;
+int* p = &a;
+int* q = &b;
+int** pp = &p;
 
 -}
 
