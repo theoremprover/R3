@@ -22,9 +22,6 @@ type StmtAST           = Stmt ZType
 type VarDeclarationAST = VarDeclaration ZType
 type FunDefAST         = FunDef ZType
 
-forEachExtDecl :: AST → (ExtDeclAST → ExtDeclAST) → AST
-forEachExtDecl ast f = map f ast
-
 
 prettyTranslUnitString :: (Pretty a) => TranslUnit a → String
 prettyTranslUnitString translunit = renderString $ layoutPretty (LayoutOptions $ AvailablePerLine 120 0.4) (pretty translunit)

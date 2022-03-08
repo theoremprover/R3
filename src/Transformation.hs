@@ -3,7 +3,15 @@
 
 module Transformation where
 
+--https://hackage.haskell.org/package/uniplate
+-- SYB: import Data.Generics
+
 import AST
+
+
+forEachExtDecl :: AST → (ExtDeclAST → ExtDeclAST) → AST
+forEachExtDecl ast f = map f ast
+
 
 {-
 	AST transformations:
