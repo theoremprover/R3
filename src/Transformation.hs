@@ -6,12 +6,15 @@ module Transformation where
 --https://hackage.haskell.org/package/uniplate
 -- SYB: import Data.Generics
 
+import Control.Monad.State
+
 import AST
 
 
+{-
 forEachExtDecl :: AST → (ExtDeclAST → ExtDeclAST) → AST
 forEachExtDecl ast f = map f ast
-
+-}
 
 {-
 	AST transformations:
@@ -61,3 +64,5 @@ int** pp = &p;
 transformAST :: AST → AST
 transformAST ast = forEachExtDecl ast $ id
 
+elimSideEffects :: StateT Int AST → AST
+elimSideEffects 
