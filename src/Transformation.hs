@@ -72,9 +72,14 @@ transformAST ast = elimSideEffects ast
 
 elimSideEffects :: AST → R3 AST
 elimSideEffects ast = do
-	liftIO $ mapM_ print [ show (pretty stmt) |
+	liftIO $ mapM_ putStrLn [ show (pretty stmt) |
 		stmt :: Stmt ZType <- universeBi ast,
 		Unary op expr _ _ :: Expr ZType <- childrenBi stmt,
 		op `elem` [PreInc,PostInc,PreDec,PostDec]
 		]
 	return ast
+
+data Expr = Val Int
+          | Neg Expr
+          | Add Expr Expr
+          deriving (
