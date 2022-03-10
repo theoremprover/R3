@@ -29,6 +29,7 @@ dependencies:
 - transformers
 - extra
 - raw-strings-qq
+- uniplate
 # remove packages with
 # stack exec ghc-pkg unregister <package-name>
 

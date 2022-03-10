@@ -1,14 +1,20 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE RecordWildCards,UnicodeSyntax #-}
+{-# LANGUAGE RecordWildCards,UnicodeSyntax,ScopedTypeVariables #-}
 
 module Transformation where
 
---https://hackage.haskell.org/package/uniplate
--- SYB: import Data.Generics
 
-import Control.Monad.State
+import Control.Monad.Trans.State
+
+-- SYB: import Data.Generics
+--https://hackage.haskell.org/package/uniplate
+import Data.Generics.Uniplate.Data
+
+import Control.Monad
 
 import AST
+import R3Monad
+import Prettyprinter
 
 
 {-
@@ -61,8 +67,14 @@ int** pp = &p;
 
 -}
 
-transformAST :: AST → AST
-transformAST ast = forEachExtDecl ast $ id
+transformAST :: AST → R3 AST
+transformAST ast = elimSideEffects ast
 
-elimSideEffects :: StateT Int AST → AST
-elimSideEffects 
+elimSideEffects :: AST → R3 AST
+elimSideEffects ast = do
+	liftIO $ mapM_ print [ show (pretty stmt) |
+		stmt :: Stmt ZType <- universeBi ast,
+		Unary op expr _ _ :: Expr ZType <- childrenBi stmt,
+		op `elem` [PreInc,PostInc,PreDec,PostDec]
+		]
+	return ast

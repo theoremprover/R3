@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase,UnicodeSyntax #-}
 
 module Main where
 
@@ -22,23 +22,28 @@ main :: IO ()
 main = do
 	-- When there is an error, we'd like to have *all* output till then
 	hSetBuffering stdout NoBuffering
+	main1 >>= \case
+		Nothing  → exitWith $ ExitFailure 1
+		Just ast → exitWith ExitSuccess
 
+main1 :: IO (Maybe (ExtDecl ZType))
+main1 = do
 	let compiler = "gcc"
 	machinespec <- getMachineSpec compiler
-	evalStateT mainR3 (R3State compiler machinespec) >>= exitWith
+	evalStateT mainR3 (R3State compiler machinespec)
 
-mainR3 :: R3 ExitCode
+mainR3 :: R3 (Maybe (ExtDecl ZType))
 mainR3 = do
 --	liftIO $ writeFile ("test.html") $ genericToHTMLString testG
 	parseFile file_name >>= \case
-		Left errmsg -> do
+		Left errmsg → do
 			liftIO $ putStrLn errmsg
-			return $ ExitFailure 1
-		Right ast -> do
-			let ast' = transformAST ast
+			return Nothing
+		Right ast → do
+			ast' <- transformAST ast
 			let fun_body = lookupExtDef function_name ast'
 			liftIO $ writeFile (function_name <.> "html") $ genericToHTMLString fun_body
-			return ExitSuccess
+			return $ Just fun_body
 
 {-
 type S1 = M1 S

@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE RecordWildCards,DeriveGeneric,TypeSynonymInstances,FlexibleInstances,FlexibleContexts,UnicodeSyntax #-}
+{-# LANGUAGE DeriveDataTypeable,RecordWildCards,DeriveGeneric,TypeSynonymInstances,FlexibleInstances,FlexibleContexts,UnicodeSyntax #-}
 
 module AST where
 
@@ -7,6 +7,8 @@ import GHC.Generics
 import Prettyprinter
 import Prettyprinter.Render.String
 
+import Data.Data
+import Data.Generics.Uniplate.Data
 
 {-
 data Te = Te [Te] | TeInt Int deriving (Show,Generic)
@@ -41,7 +43,7 @@ data ExtDecl a = ExtDecl {
 	--    (the arguments and their types are in the type of the function identifier)
 	bodyED    :: Either (Maybe (Expr a)) (FunDef a),
 	locED     :: Loc }
-	deriving (Show,Generic)
+	deriving (Show,Generic,Data,Typeable)
 instance (Pretty a) => Pretty (ExtDecl a) where
 	pretty (ExtDecl vardecl@VarDeclaration{..} body loc) = commentExtDecl vardecl $ case body of
 		Left Nothing     → pretty vardecl <> semi <+> locComment loc
@@ -60,18 +62,18 @@ data VarDeclaration a = VarDeclaration {
 	sourceTypeVD :: String,
 	typeVD       :: a,
 	locVD        :: Loc }
-	deriving (Show,Generic,Ord)
+	deriving (Show,Generic,Ord,Data,Typeable)
 instance (Eq a) => Eq (VarDeclaration a) where
 	(VarDeclaration ident1 _ ty1 _) == (VarDeclaration ident2 _ ty2 _) = ident1==ident2 && ty1==ty2
 instance (Pretty a) => Pretty (VarDeclaration a) where
 	pretty (VarDeclaration ident _ ty _) = pretty ty <+> pretty ident
 
 data FunDef a = FunDef [VarDeclaration a] (Stmt a)
-	deriving (Show,Generic)
+	deriving (Show,Generic,Data,Typeable)
 instance (Pretty a) => Pretty (FunDef a) where
 	pretty (FunDef argdecls body) = vcat [ parens (hsep $ punctuate comma $ map pretty argdecls), pretty body ]
 
-data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic)
+data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic,Data,Typeable)
 instance Eq Ident where
 	ident1 == ident2 = nameIdent ident1 == nameIdent ident2 && idIdent ident1 == idIdent ident2
 instance Pretty Ident where
@@ -80,7 +82,7 @@ instance Pretty Ident where
 data Loc =
 	NoLoc { nolocDescrLoc :: String } |
 	Loc   { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int }
-	deriving (Eq,Ord,Generic)
+	deriving (Eq,Ord,Generic,Data,Typeable)
 instance Show Loc where
 	show Loc{..}   = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
 	show (NoLoc s) = s
@@ -88,7 +90,7 @@ instance Pretty Loc where
 	pretty noloc@NoLoc{..} = viaShow noloc
 	pretty Loc{..}         = pretty $ "line " ++ show lineLoc
 
-data CompoundType = Struct | Union deriving (Show,Eq,Ord,Generic)
+data CompoundType = Struct | Union deriving (Show,Eq,Ord,Generic,Data,Typeable)
 instance Pretty CompoundType where
 	pretty Struct = pretty "struct"
 	pretty Union  = pretty "union"
@@ -105,7 +107,7 @@ data ZType =
 	ZCompound  { nameZ     :: String, comptyZ       :: CompoundType, elemtysZ :: [VarDeclaration ZType] } |
 	ZFun       { rettyZ    :: ZType,  isvariadicZ   :: Bool, argtysZ          :: [ZType] } |
 	ZUnhandled { descrZ    :: String }
-	deriving (Show,Generic,Eq,Ord)
+	deriving (Show,Generic,Eq,Ord,Data,Typeable)
 instance Pretty ZType where
 	pretty ZUnit          = pretty "void"
 	pretty ZBool          = pretty "bool"
@@ -131,7 +133,7 @@ data Expr a =
 	Var      { identE :: Ident,    typeE   :: a,        locE   :: Loc                             } |
 	Constant { constE :: Const,    typeE   :: a,        locE   :: Loc                             } |
 	Comp     { elemsE :: [Expr a], typeE   :: a,        locE   :: Loc                             }
-	deriving (Show,Generic)
+	deriving (Show,Generic,Data,Typeable)
 instance (Pretty a) => Pretty (Expr a) where
 	pretty (Assign lexpr expr ty _)          = pretty lexpr <+> colon <> colon <+> pretty ty <+> equals <+> pretty expr
 	pretty (Cast expr ty _)                  = parens $ parens (pretty ty) <> pretty expr
@@ -147,7 +149,7 @@ instance (Pretty a) => Pretty (Expr a) where
 	pretty (Comp elems _ _)                  = braces $ hsep $ punctuate comma $ map pretty elems
 
 data UnaryOp = AddrOf | Deref | Plus | Minus | BitNeg | Not | PreInc | PostInc | PreDec | PostDec
-	deriving (Show,Generic,Eq)
+	deriving (Show,Generic,Eq,Data,Typeable)
 instance Pretty UnaryOp where
 	pretty AddrOf  = pretty "&"
 	pretty Deref   = pretty "*"
@@ -163,7 +165,7 @@ instance Pretty UnaryOp where
 data BinaryOp =
 	Mul | Div | Add | Sub | Rmd | Shl | Shr | BitAnd | BitOr | BitXOr |
 	Less | Equals | NotEquals | LessEq | Greater | GreaterEq | And | Or	
-	deriving (Show,Generic,Eq)
+	deriving (Show,Generic,Eq,Data,Typeable)
 instance Pretty BinaryOp where
 	pretty Mul       = pretty "&"
 	pretty Div       = pretty "*"
@@ -189,7 +191,7 @@ data Const =
 	CharConst Char |
 	FloatConst String |
 	StringConst String
-	deriving (Show,Generic)
+	deriving (Show,Generic,Data,Typeable)
 instance Pretty Const where
 	pretty (IntConst i)    = pretty i
 	pretty (CharConst c)   = pretty c
@@ -207,7 +209,7 @@ data Stmt a =
 	Continue   { locS      :: Loc } |
 	Break      { locS      :: Loc } |
 	Goto       { identS    :: Ident,              locS      :: Loc }
-	deriving (Show,Generic)
+	deriving (Show,Generic,Data,Typeable)
 instance (Pretty a) => Pretty (Stmt a) where
 	pretty (Compound stmts _) = vcat [ nest 4 $ vcat $ lbrace : map pretty stmts, rbrace ]
 	pretty (IfThenElse cond then_s else_s loc) = vcat $ [ pretty "if" <> parens (pretty cond) <+> locComment loc, pretty then_s ] ++ case else_s of
