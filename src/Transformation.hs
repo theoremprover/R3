@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE RecordWildCards,UnicodeSyntax,ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards,UnicodeSyntax,ScopedTypeVariables,DeriveDataTypeable #-}
 
 module Transformation where
 
@@ -79,7 +79,7 @@ elimSideEffects ast = do
 		]
 	return ast
 
-data Expr = Val Int
-          | Neg Expr
-          | Add Expr Expr
-          deriving (
+asta = C [ExpStm (V 1), C [ExpStm (I (V 9)),ExpStm (V 3)]]
+test = [ (show stm,show exp) |
+	stm :: Stm <- universeBi asta,
+	I exp <- childrenBi stm ]
