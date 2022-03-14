@@ -10,6 +10,8 @@ import Control.Monad.Trans.State
 --https://hackage.haskell.org/package/uniplate
 import Data.Generics.Uniplate.Data
 
+import Control.Lens hiding (Const)
+
 import Control.Monad
 
 import AST
@@ -71,6 +73,9 @@ transformAST :: AST → R3 AST
 transformAST ast = elimSideEffects ast
 
 elimSideEffects :: AST → R3 AST
+elimSideEffects ast = return ast
+{-
+elimSideEffects :: AST → R3 AST
 elimSideEffects ast = do
 	liftIO $ mapM_ putStrLn [ show (pretty stmt) |
 		stmt :: Stmt ZType <- universeBi ast,
@@ -78,8 +83,9 @@ elimSideEffects ast = do
 		op `elem` [PreInc,PostInc,PreDec,PostDec]
 		]
 	return ast
+-}
 
 asta = C [ExpStm (V 1), C [ExpStm (I (V 9)),ExpStm (V 3)]]
-test = [ (show stm,show exp) |
+test = mapM_ print [ (show stm,show exp) |
 	stm :: Stm <- universeBi asta,
 	I exp <- childrenBi stm ]

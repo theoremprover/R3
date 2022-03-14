@@ -36,5 +36,9 @@
     <orderEntry type="library" name="html-1.0.1.2" level="project" />
     <orderEntry type="library" name="raw-strings-qq-1.1" level="project" />
     <orderEntry type="library" name="prettyprinter-1.7.1" level="project" />
+    <orderEntry type="library" name="uniplate-1.6.13" level="project" />
+    <orderEntry type="library" name="hashable-1.3.0.0" level="project" />
+    <orderEntry type="library" name="unordered-containers-0.2.16.0" level="project" />
+    <orderEntry type="library" name="syb-0.7.2.1" level="project" />
   </component>
 </module>

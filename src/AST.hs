@@ -16,12 +16,11 @@ testTe = Te [ Te [TeInt 1,TeInt 2], Te [ TeInt 3, TeInt 4 ]]
 
 testG = [[1,2,3],[4,5,6]] :: [[Int]]
 -}
-
-
 data Stm = ExpStm Exp | C [Stm]
 	deriving (Show,Generic,Data,Typeable)
 data Exp = V Int | I Exp
 	deriving (Show,Generic,Data,Typeable)
+
 
 type AST               = TranslUnit ZType
 type ExtDeclAST        = ExtDecl ZType
@@ -29,6 +28,65 @@ type ExprAST           = Expr ZType
 type StmtAST           = Stmt ZType
 type VarDeclarationAST = VarDeclaration ZType
 type FunDefAST         = FunDef ZType
+
+data Loc =
+	NoLoc { nolocDescrLoc :: String } |
+	Loc   { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int }
+	deriving (Eq,Ord,Generic,Data,Typeable)
+instance Show Loc where
+	show Loc{..}   = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
+	show (NoLoc s) = s
+instance Pretty Loc where
+	pretty noloc@NoLoc{..} = viaShow noloc
+	pretty Loc{..}         = pretty $ "line " ++ show lineLoc
+
+data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic,Data,Typeable)
+instance Eq Ident where
+	ident1 == ident2 = nameIdent ident1 == nameIdent ident2 && idIdent ident1 == idIdent ident2
+instance Pretty Ident where
+	pretty ident = pretty $ nameIdent ident
+
+data VarDeclaration a = VarDeclaration {
+	identVD      :: Ident,
+	sourceTypeVD :: String,
+	typeVD       :: a,
+	locVD        :: Loc }
+	deriving (Show,Generic,Ord,Data,Typeable)
+instance (Eq a) => Eq (VarDeclaration a) where
+	(VarDeclaration ident1 _ ty1 _) == (VarDeclaration ident2 _ ty2 _) = ident1==ident2 && ty1==ty2
+instance (Pretty a) => Pretty (VarDeclaration a) where
+	pretty (VarDeclaration ident _ ty _) = pretty ty <+> pretty ident
+
+data CompoundType = Struct | Union deriving (Show,Eq,Ord,Generic,Data,Typeable)
+instance Pretty CompoundType where
+	pretty Struct = pretty "struct"
+	pretty Union  = pretty "union"
+
+-- The ordering of the constructors have to reflect the C casting hierarchy
+data ZType =
+	ZUnit | -- void is the unit type
+	ZBool |
+	ZInt       { sizeZ     :: Int,    isunsignedZ   :: Bool } |
+	ZEnum      { nameZ     :: String, elemsZ        :: [(Ident,Integer)] } |
+	ZFloat     { expbitsZ  :: Int,    mantissabitsZ :: Int } | -- (mantissabitsZ includes the hidden bit, but excludes sign bit)
+	ZArray     { elemtyZ   :: ZType,  arrsizeZ      :: Maybe Integer } |
+	ZPtr       { targettyZ :: ZType } |
+	ZCompound  { nameZ     :: String, comptyZ       :: CompoundType, elemtysZ :: [VarDeclaration ZType] } |
+	ZFun       { rettyZ    :: ZType,  isvariadicZ   :: Bool, argtysZ          :: [ZType] } |
+	ZUnhandled { descrZ    :: String }
+	deriving (Show,Generic,Eq,Ord,Data,Typeable)
+instance Pretty ZType where
+	pretty ZUnit          = pretty "void"
+	pretty ZBool          = pretty "bool"
+	pretty ZInt{..}       = pretty (if isunsignedZ then "u" else "") <> pretty "int" <> viaShow sizeZ
+	pretty ZEnum{..}      = pretty "enum" <+> pretty nameZ
+	pretty ZFloat{..}     = pretty "float" <> viaShow (mantissabitsZ+expbitsZ)
+	pretty ZArray{..}     = pretty elemtyZ <> brackets emptyDoc
+	pretty ZPtr{..}       = pretty targettyZ <> pretty "*"
+	pretty ZCompound{..}  = pretty comptyZ <+> pretty nameZ
+	pretty ZFun{..}       = (if isvariadicZ then pretty "variadic" <+> emptyDoc else emptyDoc) <> pretty rettyZ <+>
+                                parens (hcat $ punctuate comma $ map pretty argtysZ)
+	pretty ZUnhandled{..} = pretty "UNHANDLED" <+> pretty descrZ
 
 
 prettyTranslUnitString :: (Pretty a) => TranslUnit a → String
@@ -63,69 +121,10 @@ commentExtDecl vardecl doc = vcat [hardline,pretty comment,emptyDoc,doc]
 	name = nameIdent $ identVD vardecl
 	comment = p1 ++ name ++ take (120 - (length p1 + length name)) p2
 
-data VarDeclaration a = VarDeclaration {
-	identVD      :: Ident,
-	sourceTypeVD :: String,
-	typeVD       :: a,
-	locVD        :: Loc }
-	deriving (Show,Generic,Ord,Data,Typeable)
-instance (Eq a) => Eq (VarDeclaration a) where
-	(VarDeclaration ident1 _ ty1 _) == (VarDeclaration ident2 _ ty2 _) = ident1==ident2 && ty1==ty2
-instance (Pretty a) => Pretty (VarDeclaration a) where
-	pretty (VarDeclaration ident _ ty _) = pretty ty <+> pretty ident
-
 data FunDef a = FunDef [VarDeclaration a] (Stmt a)
 	deriving (Show,Generic,Data,Typeable)
 instance (Pretty a) => Pretty (FunDef a) where
 	pretty (FunDef argdecls body) = vcat [ parens (hsep $ punctuate comma $ map pretty argdecls), pretty body ]
-
-data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic,Data,Typeable)
-instance Eq Ident where
-	ident1 == ident2 = nameIdent ident1 == nameIdent ident2 && idIdent ident1 == idIdent ident2
-instance Pretty Ident where
-	pretty ident = pretty $ nameIdent ident
-
-data Loc =
-	NoLoc { nolocDescrLoc :: String } |
-	Loc   { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int }
-	deriving (Eq,Ord,Generic,Data,Typeable)
-instance Show Loc where
-	show Loc{..}   = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
-	show (NoLoc s) = s
-instance Pretty Loc where
-	pretty noloc@NoLoc{..} = viaShow noloc
-	pretty Loc{..}         = pretty $ "line " ++ show lineLoc
-
-data CompoundType = Struct | Union deriving (Show,Eq,Ord,Generic,Data,Typeable)
-instance Pretty CompoundType where
-	pretty Struct = pretty "struct"
-	pretty Union  = pretty "union"
-
--- The ordering of the constructors have to reflect the C casting hierarchy
-data ZType =
-	ZUnit | -- void is the unit type
-	ZBool |
-	ZInt       { sizeZ     :: Int,    isunsignedZ   :: Bool } |
-	ZEnum      { nameZ     :: String, elemsZ        :: [(Ident,Integer)] } |
-	ZFloat     { expbitsZ  :: Int,    mantissabitsZ :: Int } | -- (mantissabitsZ includes the hidden bit, but excludes sign bit)
-	ZArray     { elemtyZ   :: ZType,  arrsizeZ      :: Maybe Integer } |
-	ZPtr       { targettyZ :: ZType } |
-	ZCompound  { nameZ     :: String, comptyZ       :: CompoundType, elemtysZ :: [VarDeclaration ZType] } |
-	ZFun       { rettyZ    :: ZType,  isvariadicZ   :: Bool, argtysZ          :: [ZType] } |
-	ZUnhandled { descrZ    :: String }
-	deriving (Show,Generic,Eq,Ord,Data,Typeable)
-instance Pretty ZType where
-	pretty ZUnit          = pretty "void"
-	pretty ZBool          = pretty "bool"
-	pretty ZInt{..}       = pretty (if isunsignedZ then "u" else "") <> pretty "int" <> viaShow sizeZ
-	pretty ZEnum{..}      = pretty "enum" <+> pretty nameZ
-	pretty ZFloat{..}     = pretty "float" <> viaShow (mantissabitsZ+expbitsZ)
-	pretty ZArray{..}     = pretty elemtyZ <> brackets emptyDoc
-	pretty ZPtr{..}       = pretty targettyZ <> pretty "*"
-	pretty ZCompound{..}  = pretty comptyZ <+> pretty nameZ
-	pretty ZFun{..}       = (if isvariadicZ then pretty "variadic" <+> emptyDoc else emptyDoc) <> pretty rettyZ <+>
-                                parens (hcat $ punctuate comma $ map pretty argtysZ)
-	pretty ZUnhandled{..} = pretty "UNHANDLED" <+> pretty descrZ
 
 data Expr a =
 	Assign   { lexprE :: Expr a,   exprE   :: Expr a,   typeE  :: a,      locE  :: Loc            } |
@@ -137,7 +136,7 @@ data Expr a =
 	Index    { exprE  :: Expr a,   indexE  :: Expr a,   typeE  :: a,      locE  :: Loc            } |
 	Member   { exprE  :: Expr a,   memberE :: Ident,    isptrE :: Bool,   typeE :: a, locE :: Loc } |
 	Var      { identE :: Ident,    typeE   :: a,        locE   :: Loc                             } |
-	Constant { constE :: Const,    typeE   :: a,        locE   :: Loc                             } |
+	Constant { _constE :: Const,    typeE   :: a,        locE   :: Loc                             } |
 	Comp     { elemsE :: [Expr a], typeE   :: a,        locE   :: Loc                             }
 	deriving (Show,Generic,Data,Typeable)
 instance (Pretty a) => Pretty (Expr a) where
@@ -238,3 +237,4 @@ instance (Pretty a) => Pretty (Stmt a) where
 			Goto ident _                    → pretty "goto" <+> pretty ident <> semi
 
 locComment loc = column $ \ col → (pretty $ take (120 - col) (repeat ' ') ++ "// ----------") <+> pretty loc
+
