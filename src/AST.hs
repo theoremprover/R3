@@ -34,7 +34,7 @@ data Loc =
 	Loc   { fileNameLoc::String, lineLoc::Int, columnLoc::Int, lengthLoc::Int }
 	deriving (Eq,Ord,Generic,Data,Typeable)
 instance Show Loc where
-	show Loc{..}   = show fileNameLoc ++ " : line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", length " ++ show lengthLoc
+	show Loc{..}   = fileNameLoc ++ ", line " ++ show lineLoc ++ ", col " ++ show columnLoc ++ ", len " ++ show lengthLoc
 	show (NoLoc s) = s
 instance Pretty Loc where
 	pretty noloc@NoLoc{..} = viaShow noloc

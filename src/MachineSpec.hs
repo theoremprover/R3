@@ -24,22 +24,27 @@ getMachineSpec compiler = do
 	compileHereIO compiler ["-o",exefilename,srcfilename] srcfilename machinespec_src
 	(machinespec_s,"") <- runHereIO "." exefilename []
 	return $ read machinespec_s
-
 	where
 	machinespec_src = [r|
 #include <stdio.h>
+
+const char* little = "Little";
+const char* big = "Big";
+
 int main(void)
 {
-    char* little = "Little";
-    char* big = "Big";
     char* endianness;
-    unsigned char arr[2];
+
+    unsigned char arr[2] = { 0,0 };
     *((unsigned short *)arr) = 255;
     // big endian means MSB is stored at smallest address.
-    if(arr[0]==255 && arr[1]==0) endianness=little; else { if(arr[0]==0 && arr[1]==255) endianness=big; else
-    	{ printf ("ERROR: Could not determine Endianness!\n"); return(1); } }
+    if(arr[0]==255 && arr[1]==0) endianness=little;
+    else if(arr[0]==0 && arr[1]==255) endianness=big;
+    else { printf ("ERROR: Could not determine endianness!\n"); return(1); }
+
     printf("MachineSpec { intSize=%i, longSize=%i, longLongSize=%i, endianness=%s }\n",
         sizeof(int)*8,sizeof(long int)*8,sizeof(long long int)*8,endianness);
+
     return 0;
 }
 |]

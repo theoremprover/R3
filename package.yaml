@@ -46,4 +46,5 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
+    - language-c
     - R3

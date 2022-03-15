@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE RecordWildCards,UnicodeSyntax,ScopedTypeVariables,DeriveDataTypeable #-}
+{-# LANGUAGE RecordWildCards,UnicodeSyntax,ScopedTypeVariables #-}
 
 module Transformation where
 
@@ -9,8 +9,6 @@ import Control.Monad.Trans.State
 -- SYB: import Data.Generics
 --https://hackage.haskell.org/package/uniplate
 import Data.Generics.Uniplate.Data
-
-import Control.Lens hiding (Const)
 
 import Control.Monad
 
@@ -73,7 +71,13 @@ transformAST :: AST → R3 AST
 transformAST ast = elimSideEffects ast
 
 elimSideEffects :: AST → R3 AST
-elimSideEffects ast = return ast
+elimSideEffects ast = do
+	liftIO $ mapM_ print [ show loc ++ " : " ++ show (pretty stm) |
+		Compound stmts _ <- universeBi ast,
+		stm@(ExprStmt expr loc) <- stmts,
+		Unary op _ _ _ :: Expr ZType <- children expr ]
+--		op `elem` [PreInc,PostInc,PreDec,PostDec] ]
+	return ast
 {-
 elimSideEffects :: AST → R3 AST
 elimSideEffects ast = do
@@ -86,6 +90,6 @@ elimSideEffects ast = do
 -}
 
 asta = C [ExpStm (V 1), C [ExpStm (I (V 9)),ExpStm (V 3)]]
-test = mapM_ print [ (show stm,show exp) |
+test = mapM_ print [ (show stm) |
 	stm :: Stm <- universeBi asta,
-	I exp <- childrenBi stm ]
+	True ]
