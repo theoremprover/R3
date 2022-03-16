@@ -210,8 +210,14 @@ data Stmt a =
 	IfThenElse { condS     :: Expr a,             thenstmtS :: Stmt a, elsestmtS :: Stmt a, locS :: Loc } |
 	ExprStmt   { exprS     :: Expr a,             locS      :: Loc } |
 	While      { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
+	DoWhile    { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
+	For        { initS     :: Expr a,             condS     :: Expr a, incS :: Stmt a,      bodyS     :: Stmt a, locS      :: Loc } |
+	Switch     { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
+	Case       { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
+	Cases      { loCondS   :: Expr a,             hiCondS   :: Expr a, bodyS     :: Stmt a, locS      :: Loc } |
 	Return     { mbexprS   :: Maybe (Expr a),     locS      :: Loc } |
 	Continue   { locS      :: Loc } |
+	Default    { bodyS     :: Stmt a,             locS      :: Loc } |
 	Break      { locS      :: Loc } |
 	Goto       { identS    :: Ident,              locS      :: Loc }
 	deriving (Show,Generic,Data,Typeable)

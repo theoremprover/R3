@@ -162,16 +162,14 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 	stmt2ast (CExpr mb_expr ni) = case mb_expr of
 		Just expr -> ExprStmt (expr2ast expr) (ni2loc ni)
 		Nothing   -> Compound [] (ni2loc ni)
-	stmt2ast (CWhile cond body False ni) = While (expr2ast cond) (stmt2ast body) (ni2loc ni)
-	stmt2ast (CWhile cond body True ni) = Compound [body',loop] (ni2loc ni) where
-		body' = stmt2ast body
-		loop = While (expr2ast cond) body' (ni2loc ni)
-	stmt2ast (CFor mb_expr_or_decl (Just cond) mb_inc body ni) = Compound [ini,loop] (ni2loc ni) where
+	stmt2ast (CWhile cond body is_dowhile ni) =
+		(if is_dowhile then DoWhile else While) (expr2ast cond) (stmt2ast body) (ni2loc ni)
+	stmt2ast (CFor mb_expr_or_decl (Just cond) mb_inc body ni) =
+		For ini (expr2ast cond) inc (stmt2ast body) (ni2loc ni)
+		where
 		ini = case mb_expr_or_decl of
 			Left (Just ini_expr) → ExprStmt (expr2ast ini_expr) (ni2loc ini_expr)
 			Right cdecl          → decl2stmt cdecl
-		loop = While (expr2ast cond) body' (ni2loc ni)
-		body' = Compound [stmt2ast body,inc] (ni2loc body)
 		inc = case mb_inc of
 			Nothing       → Compound [] (ni2loc ni)
 			Just inc_expr → ExprStmt (expr2ast inc_expr) (ni2loc inc_expr)
@@ -179,7 +177,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 	stmt2ast (CCont ni) = Continue (ni2loc ni)
 	stmt2ast (CBreak ni) = Break (ni2loc ni)
 	stmt2ast (CReturn mb_expr ni) = Return (fmap expr2ast mb_expr) (ni2loc ni)
---	stmt2ast (CSwitch expr (CCompound [] cbis _) ni) =
+	stmt2ast (CSwitch expr body ni) = Switch (expr2ast expr) (stmt2ast body) (ni2loc ni)
 	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
 	expr2ast :: CExpr → Expr TypeAttrs
@@ -324,8 +322,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 
 	infer_expr :: TyEnv → Maybe ZType → Expr TypeAttrs → Expr ZType
 	infer_expr tyenv mb_target_ty expr = case mb_target_ty of
-		Nothing -> expr'
-		Just target_ty -> mb_cast target_ty expr'
+		Nothing        → expr'
+		Just target_ty → mb_cast target_ty expr'
 
 		where
 
@@ -423,6 +421,13 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 				where
 				cond' = infer_expr (concat tyenvs) (Just ZBool) cond
 				[body'] = infer_stmt tyenvs [body]
+
+			DoWhile cond body loc → DoWhile cond' body' loc
+				where
+				cond' = infer_expr (concat tyenvs) (Just ZBool) cond
+				[body'] = infer_stmt tyenvs [body]
+
+			For inits cond inc body loc →
 
 			Return mb_expr loc → Return (fmap (infer_expr (concat tyenvs) Nothing) mb_expr) loc
 

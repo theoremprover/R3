@@ -66,9 +66,26 @@ int* q = &b;
 int** pp = &p;
 
 -}
+{-
+	stmt2ast (CWhile cond body True ni) = Compound [body',loop] (ni2loc ni) where
+		body' = stmt2ast body
+		loop = While (expr2ast cond) body' (ni2loc ni)
+	stmt2ast (CFor mb_expr_or_decl (Just cond) mb_inc body ni) = Compound [ini,loop] (ni2loc ni) where
+		ini = case mb_expr_or_decl of
+			Left (Just ini_expr) → ExprStmt (expr2ast ini_expr) (ni2loc ini_expr)
+			Right cdecl          → decl2stmt cdecl
+		loop = While (expr2ast cond) body' (ni2loc ni)
+		body' = Compound [stmt2ast body,inc] (ni2loc body)
+		inc = case mb_inc of
+			Nothing       → Compound [] (ni2loc ni)
+			Just inc_expr → ExprStmt (expr2ast inc_expr) (ni2loc inc_expr)
+-}
 
 transformAST :: AST → R3 AST
-transformAST ast = elimSideEffects ast
+transformAST = elimConstructs >>= elimSideEffects
+
+elimConstructs :: AST → R3 AST
+elimConstructs ast =
 
 elimSideEffects :: AST → R3 AST
 elimSideEffects ast = do
