@@ -15,7 +15,14 @@ import MachineSpec
 
 
 data R3State = R3State {
-	compilerR3 :: FilePath,
-	machineSpecR3 :: MachineSpec }
+	compilerR3    :: FilePath,
+	machineSpecR3 :: MachineSpec,
+	newNameCntR3  :: Int }
+
+getNewNameCnt :: R3 Int
+getNewNameCnt = do
+	i <- gets newNameCntR3
+	modify $ \ s -> s { newNameCntR3 = newNameCntR3 s + 1 }
+	return i
 
 type R3 a = StateT R3State IO a

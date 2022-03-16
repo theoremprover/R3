@@ -310,7 +310,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 		vardecl' = infer_vardecl vardecl
 		zty = typeVD vardecl'
 		value' = case value of
-			Left mb_expr → Left $ fmap (infer_expr global_tyenv (Just zty)) mb_expr
+			Left mb_expr → Left $ fmap (infer_expr [global_tyenv] (Just zty)) mb_expr
 			Right (AST.FunDef vardecls body) → Right $ AST.FunDef (map infer_vardecl vardecls) body'
 				where
 				vardecls' = map infer_vardecl vardecls
@@ -320,15 +320,15 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 	mb_cast target_ty expr | target_ty /= typeE expr = Cast expr target_ty (NoLoc "<inserted>")
 	mb_cast _ expr = expr
 
-	infer_expr :: TyEnv → Maybe ZType → Expr TypeAttrs → Expr ZType
-	infer_expr tyenv mb_target_ty expr = case mb_target_ty of
+	infer_expr :: [TyEnv] → Maybe ZType → Expr TypeAttrs → Expr ZType
+	infer_expr tyenvs mb_target_ty expr = case mb_target_ty of
 		Nothing        → expr'
 		Just target_ty → mb_cast target_ty expr'
 
 		where
 
-		τ      = infer_expr tyenv Nothing
-		τ_e ty = infer_expr tyenv (Just ty)
+		τ      = infer_expr tyenvs Nothing
+		τ_e ty = infer_expr tyenvs (Just ty)
 
 		expr' = case expr of
 
@@ -385,9 +385,9 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 
 			Var ident Nothing loc → Var ident ty loc
 				where
-				ty = case lookup ident tyenv of
+				ty = case lookup ident (concat tyenvs) of
 					Just t -> t
-					Nothing -> error $ "lookup " ++ show ident ++ " not found in\n" ++ showTyEnv tyenv
+					Nothing -> error $ "lookup " ++ show ident ++ " not found in\n" ++ showTyEnv (concat tyenvs)
 
 
 			Constant constant (Just ty) loc → Constant constant (ty2zty ty) loc
@@ -411,25 +411,27 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 
 			IfThenElse cond then_stmt else_stmt loc → IfThenElse cond' then_stmt' else_stmt' loc
 				where
-				cond' = infer_expr (concat tyenvs) (Just ZBool) cond
+				cond'        = infer_expr tyenvs (Just ZBool) cond
 				[then_stmt'] = infer_stmt tyenvs [then_stmt]
 				[else_stmt'] = infer_stmt tyenvs [else_stmt]
 
-			ExprStmt expr loc → ExprStmt (infer_expr (concat tyenvs) Nothing expr) loc
+			ExprStmt expr loc → ExprStmt (infer_expr tyenvs Nothing expr) loc
 
-			While cond body loc → While cond' body' loc
-				where
-				cond' = infer_expr (concat tyenvs) (Just ZBool) cond
+			While cond body loc → While cond' body' loc where
+				cond'   = infer_expr tyenvs (Just ZBool) cond
 				[body'] = infer_stmt tyenvs [body]
 
-			DoWhile cond body loc → DoWhile cond' body' loc
-				where
-				cond' = infer_expr (concat tyenvs) (Just ZBool) cond
+			DoWhile cond body loc → DoWhile cond' body' loc where
+				cond'   = infer_expr tyenvs (Just ZBool) cond
 				[body'] = infer_stmt tyenvs [body]
 
-			For inits cond inc body loc →
+			For inits cond inc body loc → For inits' cond' inc' body' loc where
+				[inits'] = infer_stmt tyenvs [inits]
+				cond'    = infer_expr tyenvs (Just ZBool) cond
+				[inc']   = infer_stmt tyenvs [inc]
+				[body']  = infer_stmt tyenvs [body]
 
-			Return mb_expr loc → Return (fmap (infer_expr (concat tyenvs) Nothing) mb_expr) loc
+			Return mb_expr loc → Return (fmap (infer_expr tyenvs Nothing) mb_expr) loc
 
 			other → error $ "infer_stmt " ++ show other ++ " not implemented"
 

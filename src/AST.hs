@@ -136,7 +136,7 @@ data Expr a =
 	Index    { exprE  :: Expr a,   indexE  :: Expr a,   typeE  :: a,      locE  :: Loc            } |
 	Member   { exprE  :: Expr a,   memberE :: Ident,    isptrE :: Bool,   typeE :: a, locE :: Loc } |
 	Var      { identE :: Ident,    typeE   :: a,        locE   :: Loc                             } |
-	Constant { _constE :: Const,    typeE   :: a,        locE   :: Loc                             } |
+	Constant { constE :: Const,    typeE   :: a,        locE   :: Loc                             } |
 	Comp     { elemsE :: [Expr a], typeE   :: a,        locE   :: Loc                             }
 	deriving (Show,Generic,Data,Typeable)
 instance (Pretty a) => Pretty (Expr a) where
@@ -211,7 +211,7 @@ data Stmt a =
 	ExprStmt   { exprS     :: Expr a,             locS      :: Loc } |
 	While      { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
 	DoWhile    { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
-	For        { initS     :: Expr a,             condS     :: Expr a, incS :: Stmt a,      bodyS     :: Stmt a, locS      :: Loc } |
+	For        { initS     :: Stmt a,             condS     :: Expr a, incS      :: Stmt a,      bodyS     :: Stmt a, locS      :: Loc } |
 	Switch     { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
 	Case       { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
 	Cases      { loCondS   :: Expr a,             hiCondS   :: Expr a, bodyS     :: Stmt a, locS      :: Loc } |
@@ -232,6 +232,10 @@ instance (Pretty a) => Pretty (Stmt a) where
 			Compound _ _ → doc
 			_            → nest 4 doc
 	pretty (While cond body loc) = vcat [ pretty "while" <> parens (pretty cond) <+> locComment loc, pretty body ]
+	pretty (DoWhile cond body loc) = vcat [ pretty "do" <+> locComment loc, pretty body, pretty "while" <> parens (pretty cond) ]
+	pretty (For ini cond inc body loc) = vcat [ pretty "for" <> parens (hcat $ punctuate semi [pretty ini,pretty cond,pretty inc]) <+> locComment loc, pretty body ]
+	pretty (Case cond body loc) = vcat [ pretty "case" <+> pretty cond <+> pretty ":" <+> locComment loc, pretty body ]
+	pretty (Cases locond hicond body loc) = vcat [ pretty "case" <+> pretty locond <+> pretty "..." <+> pretty hicond <+> pretty ":" <+> locComment loc, pretty body ]
 	pretty stmt = hcat [ stmt_doc, locComment (locS stmt) ] where
 		stmt_doc = case stmt of
 			Decls vardecls _                → vcat $ punctuate semi $ map pretty vardecls

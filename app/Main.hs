@@ -30,7 +30,7 @@ main1 :: IO (Maybe (ExtDecl ZType))
 main1 = do
 	let compiler = "gcc"
 	machinespec <- getMachineSpec compiler
-	evalStateT mainR3 (R3State compiler machinespec)
+	evalStateT mainR3 (R3State compiler machinespec 1)
 
 mainR3 :: R3 (Maybe (ExtDecl ZType))
 mainR3 = do
