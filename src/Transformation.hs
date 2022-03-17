@@ -132,7 +132,6 @@ else
 {
 	e;
 }
-
 -}
 	rule (Switch cond body loc) = do
 		newident <- newIdent "switch_val"
@@ -149,16 +148,6 @@ elimSideEffects ast = do
 		Unary op _ _ _ :: Expr ZType <- children expr ]
 --		op `elem` [PreInc,PostInc,PreDec,PostDec] ]
 	return ast
-{-
-elimSideEffects :: AST → R3 AST
-elimSideEffects ast = do
-	liftIO $ mapM_ putStrLn [ show (pretty stmt) |
-		stmt :: Stmt ZType <- universeBi ast,
-		Unary op expr _ _ :: Expr ZType <- childrenBi stmt,
-		op `elem` [PreInc,PostInc,PreDec,PostDec]
-		]
-	return ast
--}
 
 asta = C [ExpStm (V 1), C [ExpStm (I (V 9)),ExpStm (V 3)]]
 test = mapM_ print [ (show stm) |
