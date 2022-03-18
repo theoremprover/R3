@@ -125,7 +125,7 @@ inferTypes ast = do
 		zty = typeVD vardecl'
 		value' = case value of
 			Left mb_expr → Left $ fmap (infer_expr [global_tyenv] (Just zty)) mb_expr
-			Right (AST.FunDef vardecls body) → Right $ AST.FunDef (map infer_vardecl vardecls) body'
+			Right (FunDef vardecls body) → Right $ FunDef (map infer_vardecl vardecls) body'
 				where
 				vardecls' = map infer_vardecl vardecls
 				arg_env   = map vardecl2envitem vardecls'
@@ -296,7 +296,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 		loc = ni2loc ni
 		body = case identdecl of
 			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType _ paramdecls _) _)) stmt ni) →
-				Right $ AST.FunDef (map (decl2vardecl ni) paramdecls) (stmt2ast stmt)
+				Right $ FunDef (map (decl2vardecl ni) paramdecls) (stmt2ast stmt)
 			SemRep.Declaration (SemRep.Decl vardecl _) → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _)      → Left $ Just $ expr2ast expr
 			ObjectDef (ObjDef vardecl mb_init _)       → Left $ fmap initializer2expr mb_init where
@@ -469,7 +469,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 		zty = typeVD vardecl'
 		value' = case value of
 			Left mb_expr → Left $ fmap (infer_expr [global_tyenv] (Just zty)) mb_expr
-			Right (AST.FunDef vardecls body) → Right $ AST.FunDef (map infer_vardecl vardecls) body'
+			Right (FunDef vardecls body) → Right $ FunDef (map infer_vardecl vardecls) body'
 				where
 				vardecls' = map infer_vardecl vardecls
 				arg_env   = map vardecl2envitem vardecls'

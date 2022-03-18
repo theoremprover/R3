@@ -59,15 +59,17 @@ deriving instance Generic Linkage
 deriving instance Generic VarName
 
 
+type TypeAttrs = Maybe (Type,Attributes)
+
+renderpretty ::(LangCPretty.Pretty a) => a -> String
+renderpretty a = TextPretty.render $ LangCPretty.pretty $ a
+
 instance Pretty Type where
 	pretty ty = Prettyprinter.pretty $ renderpretty ty
 instance Pretty Attr where
 	pretty attr = Prettyprinter.pretty $ renderpretty attr
 
-renderpretty ::(LangCPretty.Pretty a) => a -> String
-renderpretty a = TextPretty.render $ LangCPretty.pretty $ a
-
-parseFile :: FilePath → R3 (Either String AST)
+parseFile :: FilePath → R3 (Either String (TranslUnit TypeAttrs))
 parseFile filepath = do
 	gcc <- gets compilerR3
 	liftIO $ parseCFile (newGCC gcc) Nothing [] filepath >>= \case
@@ -87,8 +89,6 @@ parseFile filepath = do
 					liftIO $ writeFile "AST.html" $ astToHTMLString ast
 					liftIO $ writeFile "translunit.TypeAttr" $ prettyTranslUnitString ast_typeattr
 					return $ Right ast
-
-type TypeAttrs = Maybe (Type,Attributes)
 
 type TyEnvItem = (Ident,ZType)
 type TyEnv = [TyEnvItem]

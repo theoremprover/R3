@@ -16,6 +16,13 @@ import AST
 import R3Monad
 import Prettyprinter
 
+type AST               = TranslUnit ZType
+type ExtDeclAST        = ExtDecl ZType
+type ExprAST           = Expr ZType
+type StmtAST           = Stmt ZType
+type VarDeclarationAST = VarDeclaration ZType
+type FunDefAST         = FunDef ZType
+
 
 {-
 forEachExtDecl :: AST → (ExtDeclAST → ExtDeclAST) → AST

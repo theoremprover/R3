@@ -10,24 +10,6 @@ import Prettyprinter.Render.String
 import Data.Data
 import Data.Generics.Uniplate.Data
 
-{-
-data Te = Te [Te] | TeInt Int deriving (Show,Generic)
-testTe = Te [ Te [TeInt 1,TeInt 2], Te [ TeInt 3, TeInt 4 ]]
-
-testG = [[1,2,3],[4,5,6]] :: [[Int]]
--}
-data Stm = ExpStm Exp | C [Stm]
-	deriving (Show,Generic,Data,Typeable)
-data Exp = V Int | I Exp
-	deriving (Show,Generic,Data,Typeable)
-
-
-type AST               = TranslUnit ZType
-type ExtDeclAST        = ExtDecl ZType
-type ExprAST           = Expr ZType
-type StmtAST           = Stmt ZType
-type VarDeclarationAST = VarDeclaration ZType
-type FunDefAST         = FunDef ZType
 
 data Loc =
 	NoLoc { nolocDescrLoc :: String } |

@@ -40,9 +40,9 @@ mainR3 = do
 		Left errmsg → do
 			liftIO $ putStrLn errmsg
 			return Nothing
-		Right ast → do
-			typed_ast <- inferTypes ast
-			ast' <- transformAST typed_ast
+		Right raw_ast → do
+			typed_ast <- inferTypes raw_ast
+			ast <- transformAST typed_ast
 			let fun_body = lookupExtDef function_name ast'
 			liftIO $ writeFile (function_name <.> "html") $ genericToHTMLString fun_body
 			return $ Just fun_body
