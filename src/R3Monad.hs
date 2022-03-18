@@ -4,6 +4,7 @@
 module R3Monad (
 	R3State(..),
 	R3,
+	getNewNameCnt,
 	module Control.Monad.Trans.State.Lazy,
 	liftIO,MonadIO )
 	where

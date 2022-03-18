@@ -23,12 +23,6 @@ type StmtAST           = Stmt ZType
 type VarDeclarationAST = VarDeclaration ZType
 type FunDefAST         = FunDef ZType
 
-
-{-
-forEachExtDecl :: AST → (ExtDeclAST → ExtDeclAST) → AST
-forEachExtDecl ast f = map f ast
--}
-
 {-
 	AST transformations:
 
@@ -99,11 +93,13 @@ newIdent prefix = do
 	return $ Ident (prefix ++ "$" ++ show i) i introLoc
 
 elimConstructs :: AST → R3 AST
-elimConstructs ast = transformM rule ast where
+elimConstructs ast = transformBiM rules ast
+	where
 
-	rule (DoWhile cond body loc) = return $ Compound [body,While cond body loc] loc
+  	rules :: StmtAST -> R3 StmtAST
+	rules (DoWhile cond body loc) = return $ Compound [body,While cond body loc] loc
 
-	rule (For ini cond inc body loc) = do
+	rules (For ini cond inc body loc) = do
 		let body' = Compound [body,inc] (locS body)
 		return $ Compound [ini,While cond body' loc] loc
 
@@ -140,12 +136,16 @@ else
 	e;
 }
 -}
-	rule (Switch cond body loc) = do
+
+{-
+	rules (Switch cond body loc) = do
 		newident <- newIdent "switch_val"
 		let switchvar = Var newident (typeE cond) introLoc
 		return $ Compound [
 			ExprStmt (Assign switchvar cond (typeE switchvar)) introLoc,
-			
+-}
+
+	rules other = return other
 
 elimSideEffects :: AST → R3 AST
 elimSideEffects ast = do
@@ -156,7 +156,9 @@ elimSideEffects ast = do
 --		op `elem` [PreInc,PostInc,PreDec,PostDec] ]
 	return ast
 
+{-
 asta = C [ExpStm (V 1), C [ExpStm (I (V 9)),ExpStm (V 3)]]
 test = mapM_ print [ (show stm) |
 	stm :: Stm <- universeBi asta,
 	True ]
+-}

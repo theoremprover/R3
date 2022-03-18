@@ -14,7 +14,6 @@ import R3Monad
 import DataTree
 import AST
 import Transformation
-import TypeInference
 
 function_name = "_fpmul_parts"
 file_name = "test.c"
@@ -40,10 +39,11 @@ mainR3 = do
 		Left errmsg → do
 			liftIO $ putStrLn errmsg
 			return Nothing
-		Right raw_ast → do
-			typed_ast <- inferTypes raw_ast
+		Right (raw_ast,typed_ast) → do
+			liftIO $ writeFile "translunit.ZType" $ prettyTranslUnitString typed_ast
 			ast <- transformAST typed_ast
-			let fun_body = lookupExtDef function_name ast'
+			liftIO $ writeFile "transformed.ZType" $ prettyTranslUnitString ast
+			let fun_body = lookupExtDef function_name ast
 			liftIO $ writeFile (function_name <.> "html") $ genericToHTMLString fun_body
 			return $ Just fun_body
 
