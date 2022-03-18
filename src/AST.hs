@@ -20,7 +20,7 @@ instance Show Loc where
 	show (NoLoc s) = s
 instance Pretty Loc where
 	pretty noloc@NoLoc{..} = viaShow noloc
-	pretty Loc{..}         = pretty $ "line " ++ show lineLoc
+	pretty Loc{..}         = pretty $ fileNameLoc ++ ": line " ++ show lineLoc
 
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic,Data,Typeable)
 instance Eq Ident where
@@ -91,17 +91,17 @@ data ExtDecl a = ExtDecl {
 	locED     :: Loc }
 	deriving (Show,Generic,Data,Typeable)
 instance (Pretty a) => Pretty (ExtDecl a) where
-	pretty (ExtDecl vardecl@VarDeclaration{..} body loc) = commentExtDecl vardecl $ case body of
+	pretty (ExtDecl vardecl@VarDeclaration{..} body loc) = commentExtDecl vardecl loc $ case body of
 		Left Nothing     → pretty vardecl <> semi <+> locComment loc
-		Left (Just expr) → pretty vardecl <+> equals <+> pretty expr <> semi  <+> locComment loc
-		Right fundef     → pretty vardecl <+> pretty fundef  <+> locComment loc
+		Left (Just expr) → pretty vardecl <+> equals <+> pretty expr <> semi <+> locComment loc
+		Right fundef     → pretty vardecl <+> pretty fundef 
 
-commentExtDecl vardecl doc = vcat [hardline,pretty comment,emptyDoc,doc]
+commentExtDecl vardecl loc doc = vcat [hardline,comment,emptyDoc,doc]
 	where
 	p1 = "// ==== "
 	p2 = " " ++ repeat '='
-	name = nameIdent $ identVD vardecl
-	comment = p1 ++ name ++ take (120 - (length p1 + length name)) p2
+	name = nameIdent (identVD vardecl)
+	comment = pretty p1 <+> pretty name <+> parens (pretty loc) <+> pretty (take (120 - (length p1 + length name)) p2)
 
 data FunDef a = FunDef [VarDeclaration a] (Stmt a)
 	deriving (Show,Generic,Data,Typeable)
@@ -218,7 +218,7 @@ instance (Pretty a) => Pretty (Stmt a) where
 	pretty (For ini cond inc body loc) = vcat [ pretty "for" <> parens (hcat $ punctuate semi [pretty ini,pretty cond,pretty inc]) <+> locComment loc, pretty body ]
 	pretty (Case cond body loc) = vcat [ pretty "case" <+> pretty cond <+> pretty ":" <+> locComment loc, pretty body ]
 	pretty (Cases locond hicond body loc) = vcat [ pretty "case" <+> pretty locond <+> pretty "..." <+> pretty hicond <+> pretty ":" <+> locComment loc, pretty body ]
-	pretty stmt = hcat [ stmt_doc, locComment (locS stmt) ] where
+	pretty stmt = stmt_doc <+> locComment (locS stmt) where
 		stmt_doc = case stmt of
 			Decls vardecls _                → vcat $ punctuate semi $ map pretty vardecls
 			Label ident stmt _              → vcat [ pretty ident <> colon, pretty stmt ]
