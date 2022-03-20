@@ -164,13 +164,13 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 	stmt2ast (CWhile cond body is_dowhile ni) =
 		(if is_dowhile then DoWhile else While) (expr2ast cond) (mb_break_compound body) (ni2loc ni)
 	stmt2ast (CFor mb_expr_or_decl (Just cond) mb_inc body ni) =
-		For inis (expr2ast cond) incs (mb_break_compound body) (ni2loc ni)
+		For ini (expr2ast cond) incs (mb_break_compound body) (ni2loc ni)
 		where
-		inis = case mb_expr_or_decl of
+		ini = case mb_expr_or_decl of
 			Left (Just ini_expr) → ExprStmt (expr2ast ini_expr) (ni2loc ini_expr)
 			Right cdecl          → decl2stmt cdecl
 		incs = case mb_inc of
-			Nothing       → []
+			Nothing       → emptyStmt introLoc
 			Just inc_expr → [ ExprStmt (expr2ast inc_expr) (ni2loc inc_expr) ]
 	stmt2ast (CGoto cident ni) = Goto (cident2ident cident) (ni2loc ni)
 	stmt2ast (CCont ni) = Continue (ni2loc ni)
