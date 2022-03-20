@@ -141,38 +141,43 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 				initializer2expr (CInitList initlist _) = Comp idexprs (typeVD vardeclast) loc where
 					idexprs = for initlist $ \ ([],initializer) → initializer2expr initializer
 
-	cbi2ast :: CBlockItem -> Stmt TypeAttrs
+	cbi2ast :: CBlockItem → Stmt TypeAttrs
 	cbi2ast (CBlockStmt stmt) = stmt2ast stmt
 	cbi2ast (CBlockDecl decl) = decl2stmt decl
 
+	mb_break_compound (CCompound _ cbis ni) = Compound True (map cbi2ast cbis) (ni2loc ni)
+	mb_break_compound other = stmt2ast other
+
+	emptyStmt ni = Compound False [] (ni2loc ni)
+
 	stmt2ast :: CStat → Stmt TypeAttrs
-	stmt2ast (CCompound _ cbis ni) = Compound (map cbi2ast cbis) (ni2loc ni)
+	stmt2ast (CCompound _ cbis ni) = Compound False (map cbi2ast cbis) (ni2loc ni)
 	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (stmt2ast stmt) (ni2loc ni)
 	stmt2ast (CIf expr then_stmt mb_else_stmt ni) =
 		IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt (ni2loc ni) where
 		else_stmt = case mb_else_stmt of
-			Nothing     → Compound [] (ni2loc then_stmt)
+			Nothing     → emptyStmt then_stmt
 			Just e_stmt → stmt2ast e_stmt
 	stmt2ast (CExpr mb_expr ni) = case mb_expr of
-		Just expr -> ExprStmt (expr2ast expr) (ni2loc ni)
-		Nothing   -> Compound [] (ni2loc ni)
+		Just expr → ExprStmt (expr2ast expr) (ni2loc ni)
+		Nothing   → emptyStmt ni
 	stmt2ast (CWhile cond body is_dowhile ni) =
-		(if is_dowhile then DoWhile else While) (expr2ast cond) (stmt2ast body) (ni2loc ni)
+		(if is_dowhile then DoWhile else While) (expr2ast cond) (mb_break_compound body) (ni2loc ni)
 	stmt2ast (CFor mb_expr_or_decl (Just cond) mb_inc body ni) =
-		For ini (expr2ast cond) inc (stmt2ast body) (ni2loc ni)
+		For inis (expr2ast cond) incs (mb_break_compound body) (ni2loc ni)
 		where
-		ini = case mb_expr_or_decl of
+		inis = case mb_expr_or_decl of
 			Left (Just ini_expr) → ExprStmt (expr2ast ini_expr) (ni2loc ini_expr)
 			Right cdecl          → decl2stmt cdecl
-		inc = case mb_inc of
-			Nothing       → Compound [] (ni2loc ni)
-			Just inc_expr → ExprStmt (expr2ast inc_expr) (ni2loc inc_expr)
+		incs = case mb_inc of
+			Nothing       → []
+			Just inc_expr → [ ExprStmt (expr2ast inc_expr) (ni2loc inc_expr) ]
 	stmt2ast (CGoto cident ni) = Goto (cident2ident cident) (ni2loc ni)
 	stmt2ast (CCont ni) = Continue (ni2loc ni)
 	stmt2ast (CBreak ni) = Break (ni2loc ni)
 	stmt2ast (CDefault stmt ni) = Default (stmt2ast stmt) (ni2loc ni)
 	stmt2ast (CReturn mb_expr ni) = Return (fmap expr2ast mb_expr) (ni2loc ni)
-	stmt2ast (CSwitch expr body ni) = Switch (expr2ast expr) (stmt2ast body) (ni2loc ni)
+	stmt2ast (CSwitch expr body ni) = Switch (expr2ast expr) (mb_break_compound body) (ni2loc ni)
 	stmt2ast (CCase expr stmt ni) = Case (expr2ast expr) (stmt2ast stmt) (ni2loc ni)
 	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
@@ -404,7 +409,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 		where
 		stmt' = case stmt of
 
-			Compound inner_stmts loc → Compound (infer_stmt ([]:tyenvs) inner_stmts) loc
+			Compound catchbreak inner_stmts loc → Compound catchbreak (infer_stmt ([]:tyenvs) inner_stmts) loc
 
 			IfThenElse cond then_stmt else_stmt loc → IfThenElse cond' then_stmt' else_stmt' loc
 				where

@@ -95,11 +95,14 @@ elimConstructs ast = transformBiM rules ast
 	where
 
   	rules :: StmtAST -> R3 StmtAST
-	rules (DoWhile cond body loc) = return $ Compound [body,While cond body loc] loc
 
-	rules (For ini cond inc body loc) = do
-		let body' = Compound [body,inc] (locS body)
-		return $ Compound [ini,While cond body' loc] loc
+  	-- The body compound under While catches break by default,
+  	-- and also breaks the "Compound True [body ..." compound, because it is the last compound in the whole compound
+	rules (DoWhile cond body loc) = return $ Compound True [body,While cond body loc] loc
+
+	rules (For inis cond incs body loc) = do
+		let body' = Compound True (body:incs) (locS body)
+		return $ Compound True (inis ++ [While cond body' loc]) loc
 
 {-
 switch(expr)
@@ -135,10 +138,10 @@ else
 }
 -}
 
-	rules (Switch switchval (Compound bodystmts bodyloc) loc) = do
+	rules (Switch switchval (Compound True bodystmts bodyloc) loc) = do
 		newident <- newIdent "switch_val"
 		let switchvar = Var newident (typeE switchval) introLoc
-		return $ Compound [
+		return $ Compound True [
 			switchvar ≔ switchval,
 			switchbody switchvar bodystmts
 			] bodyloc
@@ -147,9 +150,9 @@ else
 
 		switchbody switchvar (Case val body loc : stmts) =
 			𝗂𝖿 (val ≟ switchvar)
-				(Compound (till_break (body:stmts)) introLoc)
+				(Compound False (till_break (body:stmts)) introLoc)
 				(switchbody switchvar (skip_till_case stmts))
-		switchbody _ (Default stmt _ : stmts) = Compound (till_break (stmt:stmts)) introLoc
+		switchbody _ (Default stmt _ : stmts) = Compound False (till_break (stmt:stmts)) introLoc
 
 		till_break [] = []
 		till_break (Break _ : _) = []
@@ -164,7 +167,7 @@ else
 elimSideEffects :: AST → R3 AST
 elimSideEffects ast = do
 	liftIO $ mapM_ print [ show loc ++ " : " ++ show (pretty stm) |
-		Compound stmts _ <- universeBi ast,
+		Compound _ stmts _ <- universeBi ast,
 		stm@(ExprStmt expr loc) <- stmts,
 		Unary op _ _ _ :: Expr ZType <- children expr ]
 --		op `elem` [PreInc,PostInc,PreDec,PostDec] ]

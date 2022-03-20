@@ -190,12 +190,12 @@ instance Pretty Const where
 data Stmt a =
 	Decls      { vardeclsS :: [VarDeclaration a], locS      :: Loc } |
 	Label      { identS    :: Ident,              stmtS     :: Stmt a, locS      :: Loc } |
-	Compound   { stmtsS    :: [Stmt a],           locS      :: Loc } |
+	Compound   { catchBrkS :: Bool,               stmtsS    :: [Stmt a], locS      :: Loc } |
 	IfThenElse { condS     :: Expr a,             thenstmtS :: Stmt a, elsestmtS :: Stmt a, locS :: Loc } |
 	ExprStmt   { exprS     :: Expr a,             locS      :: Loc } |
 	While      { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
 	DoWhile    { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
-	For        { initS     :: Stmt a,             condS     :: Expr a, incS      :: Stmt a,      bodyS     :: Stmt a, locS      :: Loc } |
+	For        { initS     :: [Stmt a],           condS     :: Expr a, incS      :: [Stmt a], bodyS   :: Stmt a, locS      :: Loc } |
 	Switch     { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
 	Case       { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
 	Cases      { loCondS   :: Expr a,             hiCondS   :: Expr a, bodyS     :: Stmt a, locS      :: Loc } |
@@ -206,18 +206,25 @@ data Stmt a =
 	Goto       { identS    :: Ident,              locS      :: Loc }
 	deriving (Show,Generic,Data,Typeable)
 instance (Pretty a,Show a) => Pretty (Stmt a) where
-	pretty (Compound stmts _) = vcat [ nest 4 $ vcat $ lbrace : map pretty stmts, rbrace ]
+	pretty (Compound breaks stmts _) = vcat [ nest 4 $ vcat $
+		((lbrace <+> pretty (if breaks then "// breaks" else "")) : map pretty stmts), rbrace ]
 	pretty (IfThenElse cond then_s else_s loc) = vcat $ [ pretty "if" <> parens (pretty cond) <+> locComment loc, pretty then_s ] ++ case else_s of
-		Compound [] _ → []
-		else_stmt     → [ mb_singleline else_stmt $ vcat [ pretty "else", pretty else_stmt ] ]
+		Compound _ [] _ → []
+		else_stmt       → [ mb_singleline else_stmt $ vcat [ pretty "else", pretty else_stmt ] ]
 		where
 		mb_singleline :: (Stmt a) -> Doc ann -> Doc ann
 		mb_singleline comp doc = case comp of
-			Compound _ _ → doc
-			_            → nest 4 doc
+			Compound _ _ _ → doc
+			_              → nest 4 doc
 	pretty (While cond body loc) = vcat [ pretty "while" <> parens (pretty cond) <+> locComment loc, pretty body ]
 	pretty (DoWhile cond body loc) = vcat [ pretty "do" <+> locComment loc, pretty body, pretty "while" <> parens (pretty cond) ]
-	pretty (For ini cond inc body loc) = vcat [ pretty "for" <> parens (hcat $ punctuate semi [pretty ini,pretty cond,pretty inc]) <+> locComment loc, pretty body ]
+	pretty (For inis cond incs body loc) = vcat [ pretty "for" <> parens (
+		hcat $ punctuate semi [
+			hcat $ punctuate comma (map pretty inis),
+			pretty cond,
+			hcat $ punctuate comma (map pretty incs) ]
+			) <+> locComment loc,
+		pretty body ]
 	pretty (Switch val body loc) = vcat [ pretty "switch" <> parens (pretty val) <+> locComment loc, pretty body ]
 	pretty (Case cond body loc) = vcat [ pretty "case" <+> pretty cond <+> pretty ":" <+> locComment loc, pretty body ]
 	pretty (Default body loc) = vcat [ pretty "default" <> pretty ":" <+> locComment loc, pretty body ]
