@@ -85,8 +85,6 @@ int** pp = &p;
 transformAST :: AST → R3 AST
 transformAST ast = elimConstructs ast >>= elimSideEffects
 
-introLoc = NoLoc "introduced"
-
 newIdent :: String -> R3 Ident
 newIdent prefix = do
 	i <- getNewNameCnt 
@@ -137,13 +135,29 @@ else
 }
 -}
 
-{-
-	rules (Switch cond body loc) = do
+	rules (Switch switchval (Compound bodystmts bodyloc) loc) = do
 		newident <- newIdent "switch_val"
-		let switchvar = Var newident (typeE cond) introLoc
+		let switchvar = Var newident (typeE switchval) introLoc
 		return $ Compound [
-			ExprStmt (Assign switchvar cond (typeE switchvar)) introLoc,
--}
+			switchvar ≔ switchval,
+			switchbody switchvar bodystmts
+			] bodyloc
+
+		where
+
+		switchbody switchvar (Case val body loc : stmts) =
+			𝗂𝖿 (val ≟ switchvar)
+				(Compound (till_break (body:stmts)) introLoc)
+				(switchbody switchvar (skip_till_case stmts))
+		switchbody _ (Default stmt _ : stmts) = Compound (till_break (stmt:stmts)) introLoc
+
+		till_break [] = []
+		till_break (Break _ : _) = []
+		till_break (stmt : stmts) = stmt : till_break stmts
+
+		skip_till_case [] = []
+		skip_till_case stmts@(Case _ _ _ : _) = stmts
+		skip_till_case (_ : stmts) = skip_till_case stmts
 
 	rules other = return other
 

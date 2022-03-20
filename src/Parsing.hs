@@ -170,8 +170,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 	stmt2ast (CGoto cident ni) = Goto (cident2ident cident) (ni2loc ni)
 	stmt2ast (CCont ni) = Continue (ni2loc ni)
 	stmt2ast (CBreak ni) = Break (ni2loc ni)
+	stmt2ast (CDefault stmt ni) = Default (stmt2ast stmt) (ni2loc ni)
 	stmt2ast (CReturn mb_expr ni) = Return (fmap expr2ast mb_expr) (ni2loc ni)
 	stmt2ast (CSwitch expr body ni) = Switch (expr2ast expr) (stmt2ast body) (ni2loc ni)
+	stmt2ast (CCase expr stmt ni) = Case (expr2ast expr) (stmt2ast stmt) (ni2loc ni)
 	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
 	expr2ast :: CExpr → Expr TypeAttrs
@@ -426,6 +428,19 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 				[inc']   = infer_stmt tyenvs [inc]
 				[body']  = infer_stmt tyenvs [body]
 
+			Switch val body loc → Switch (infer_expr tyenvs Nothing val) body' loc where
+				[body']  = infer_stmt tyenvs [body]
+
 			Return mb_expr loc → Return (fmap (infer_expr tyenvs Nothing) mb_expr) loc
+
+			Default stmt loc → Default stmt' loc where
+				[stmt'] = infer_stmt tyenvs [stmt]
+
+			Case val stmt loc → Case (infer_expr tyenvs Nothing val) stmt' loc where
+				[stmt'] = infer_stmt tyenvs [stmt]
+
+			Continue loc → Continue loc
+
+			Break loc → Break loc
 
 			other → error $ "infer_stmt " ++ show other ++ " not implemented"

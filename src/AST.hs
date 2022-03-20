@@ -22,6 +22,8 @@ instance Pretty Loc where
 	pretty noloc@NoLoc{..} = viaShow noloc
 	pretty Loc{..}         = pretty $ fileNameLoc ++ ": line " ++ show lineLoc
 
+introLoc = NoLoc "introduced"
+
 data Ident = Ident { nameIdent::String, idIdent::Int, locIdent::Loc } deriving (Show,Ord,Generic,Data,Typeable)
 instance Eq Ident where
 	ident1 == ident2 = nameIdent ident1 == nameIdent ident2 && idIdent ident1 == idIdent ident2
@@ -71,11 +73,11 @@ instance Pretty ZType where
 	pretty ZUnhandled{..} = pretty "UNHANDLED" <+> pretty descrZ
 
 
-prettyTranslUnitString :: (Pretty a) => TranslUnit a → String
+prettyTranslUnitString :: (Show a,Pretty a) => TranslUnit a → String
 prettyTranslUnitString translunit = renderString $ layoutPretty (LayoutOptions $ AvailablePerLine 120 0.4) (pretty translunit)
 
 type TranslUnit a = [ExtDecl a]
-instance {-# OVERLAPS #-} (Pretty a) => Pretty (TranslUnit a) where
+instance {-# OVERLAPS #-} (Show a,Pretty a) => Pretty (TranslUnit a) where
 	pretty translunit = vcat $ map pretty translunit
 
 lookupExtDef :: String → TranslUnit a → ExtDecl a
@@ -90,11 +92,11 @@ data ExtDecl a = ExtDecl {
 	bodyED    :: Either (Maybe (Expr a)) (FunDef a),
 	locED     :: Loc }
 	deriving (Show,Generic,Data,Typeable)
-instance (Pretty a) => Pretty (ExtDecl a) where
+instance (Show a,Pretty a) => Pretty (ExtDecl a) where
 	pretty (ExtDecl vardecl@VarDeclaration{..} body loc) = commentExtDecl vardecl loc $ case body of
 		Left Nothing     → pretty vardecl <> semi <+> locComment loc
 		Left (Just expr) → pretty vardecl <+> equals <+> pretty expr <> semi <+> locComment loc
-		Right fundef     → pretty vardecl <+> pretty fundef 
+		Right fundef     → pretty vardecl <+> pretty fundef
 
 commentExtDecl vardecl loc doc = vcat [hardline,comment,emptyDoc,doc]
 	where
@@ -105,7 +107,7 @@ commentExtDecl vardecl loc doc = vcat [hardline,comment,emptyDoc,doc]
 
 data FunDef a = FunDef [VarDeclaration a] (Stmt a)
 	deriving (Show,Generic,Data,Typeable)
-instance (Pretty a) => Pretty (FunDef a) where
+instance (Show a,Pretty a) => Pretty (FunDef a) where
 	pretty (FunDef argdecls body) = vcat [ parens (hsep $ punctuate comma $ map pretty argdecls), pretty body ]
 
 data Expr a =
@@ -121,7 +123,7 @@ data Expr a =
 	Constant { constE :: Const,    typeE   :: a,        locE   :: Loc                             } |
 	Comp     { elemsE :: [Expr a], typeE   :: a,        locE   :: Loc                             }
 	deriving (Show,Generic,Data,Typeable)
-instance (Pretty a) => Pretty (Expr a) where
+instance (Show a,Pretty a) => Pretty (Expr a) where
 	pretty (Assign lexpr expr ty _)          = pretty lexpr <+> colon <> colon <+> pretty ty <+> equals <+> pretty expr
 	pretty (Cast expr ty _)                  = parens $ parens (pretty ty) <> pretty expr
 	pretty (Call fun args _ _)               = pretty fun <> parens (hsep $ punctuate comma $ map pretty args)
@@ -203,7 +205,7 @@ data Stmt a =
 	Break      { locS      :: Loc } |
 	Goto       { identS    :: Ident,              locS      :: Loc }
 	deriving (Show,Generic,Data,Typeable)
-instance (Pretty a) => Pretty (Stmt a) where
+instance (Pretty a,Show a) => Pretty (Stmt a) where
 	pretty (Compound stmts _) = vcat [ nest 4 $ vcat $ lbrace : map pretty stmts, rbrace ]
 	pretty (IfThenElse cond then_s else_s loc) = vcat $ [ pretty "if" <> parens (pretty cond) <+> locComment loc, pretty then_s ] ++ case else_s of
 		Compound [] _ → []
@@ -216,7 +218,9 @@ instance (Pretty a) => Pretty (Stmt a) where
 	pretty (While cond body loc) = vcat [ pretty "while" <> parens (pretty cond) <+> locComment loc, pretty body ]
 	pretty (DoWhile cond body loc) = vcat [ pretty "do" <+> locComment loc, pretty body, pretty "while" <> parens (pretty cond) ]
 	pretty (For ini cond inc body loc) = vcat [ pretty "for" <> parens (hcat $ punctuate semi [pretty ini,pretty cond,pretty inc]) <+> locComment loc, pretty body ]
+	pretty (Switch val body loc) = vcat [ pretty "switch" <> parens (pretty val) <+> locComment loc, pretty body ]
 	pretty (Case cond body loc) = vcat [ pretty "case" <+> pretty cond <+> pretty ":" <+> locComment loc, pretty body ]
+	pretty (Default body loc) = vcat [ pretty "default" <> pretty ":" <+> locComment loc, pretty body ]
 	pretty (Cases locond hicond body loc) = vcat [ pretty "case" <+> pretty locond <+> pretty "..." <+> pretty hicond <+> pretty ":" <+> locComment loc, pretty body ]
 	pretty stmt = stmt_doc <+> locComment (locS stmt) where
 		stmt_doc = case stmt of
@@ -227,6 +231,19 @@ instance (Pretty a) => Pretty (Stmt a) where
 			Continue _                      → pretty "continue" <> semi
 			Break _                         → pretty "break" <> semi
 			Goto ident _                    → pretty "goto" <+> pretty ident <> semi
+			other                           → error $ "pretty " ++ show other ++ " not implemented"
 
 locComment loc = column $ \ col → (pretty $ take (120 - col) (repeat ' ') ++ "// ----------") <+> pretty loc
 
+------ 𝖺𝖻𝖼𝖽𝖾𝖿𝗀𝗁𝗂𝗃𝗄𝗅𝗆𝗇𝗈𝗉𝗊𝗋𝗌𝗍𝗎𝗏𝗐𝗑𝗒𝗓
+
+infixr 2 ≔
+(≔) :: Expr ZType -> Expr ZType -> Stmt ZType
+a ≔ b = ExprStmt (Assign a b (typeE a) (locE a)) (locE a)
+
+𝗂𝖿 :: Expr ZType -> Stmt ZType -> Stmt ZType -> Stmt ZType
+𝗂𝖿 cond then_stmt else_stmt = IfThenElse cond then_stmt else_stmt introLoc
+
+infix 4 ≟
+(≟) :: Expr ZType -> Expr ZType -> Expr ZType
+a ≟ b = Binary Equals a b ZBool (locE a)

@@ -16,7 +16,7 @@ import AST
 import Transformation
 
 function_name = "_fpmul_parts"
-file_name = "test.c"
+file_name = "switchtest.c"
 
 main :: IO ()
 main = do
