@@ -112,12 +112,17 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 		Left errs    → error $ show errs
 		Right (ty,_) → ty
 
-	decl2stmt :: CDecl -> Stmt TypeAttrs
-	decl2stmt (CDecl declspecs triples ni) = Decls vardecls (ni2loc ni)
-		where
-		vardecls = for triples $ \ (Just cdeclr@(CDeclr (Just cident) _ _ _ ni),mb_init,mb_expr) →
-			let ty = getCDeclType $ CDecl declspecs [(Just cdeclr,mb_init,mb_expr)] ni in
-				VarDeclaration (cident2ident cident) (renderpretty ty) (Just (ty,[])) (ni2loc ni)
+	decl2stmt :: CDecl -> [Stmt TypeAttrs]
+	decl2stmt (CDecl declspecs triples ni) = concatFor triples $
+		\ (Just cdeclr@(CDeclr (Just cident) _ _ _ ni),mb_init,mb_size) → let
+			ident = cident2ident cident
+			ty = getCDeclType $ CDecl declspecs [(Just cdeclr,mb_init,mb_size)] ni
+			tyattrs = Just (ty,[])
+			init_assign = case mb_init of
+				Nothing → []
+				Just initializer → [ Var ident Nothing (ni2loc ni) ≔ initializer2expr tyattrs initializer ]
+			in
+			AST.Decl (VarDeclaration ident (renderpretty ty) tyattrs (ni2loc ni)) (ni2loc ni) : init_assign
 
 	decl2vardecl :: (Declaration d) => NodeInfo → d → VarDeclaration TypeAttrs
 	decl2vardecl ni decl = VarDeclaration (cident2ident ident) (renderpretty ty) (Just (ty,attrs)) (ni2loc ni)
@@ -135,50 +140,55 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 				Right $ AST.FunDef (map (decl2vardecl ni) paramdecls) (stmt2ast stmt)
 			SemRep.Declaration (SemRep.Decl vardecl _) → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _)      → Left $ Just $ expr2ast expr
-			ObjectDef (ObjDef vardecl mb_init _)       → Left $ fmap initializer2expr mb_init where
-				initializer2expr :: CInitializer NodeInfo → Expr TypeAttrs
-				initializer2expr (CInitExpr expr _)     = expr2ast expr
-				initializer2expr (CInitList initlist _) = Comp idexprs (typeVD vardeclast) loc where
-					idexprs = for initlist $ \ ([],initializer) → initializer2expr initializer
+			ObjectDef (ObjDef vardecl mb_init _)       → Left $ fmap (initializer2expr (typeVD vardeclast)) mb_init
+
+	initializer2expr :: TypeAttrs → CInitializer NodeInfo → Expr TypeAttrs
+	initializer2expr _       (CInitExpr expr _)     = expr2ast expr
+	initializer2expr tyattrs (CInitList initlist ni) = Comp idexprs tyattrs (ni2loc ni) where
+		idexprs = for initlist $ \ ([],initializer) → initializer2expr tyattrs initializer
+
+	mb_compound_stmts :: [Stmt TypeAttrs] → Stmt TypeAttrs
+	mb_compound_stmts [stmt] = stmt
+	mb_compound_stmts stmts = Compound False stmts introLoc
 
 	cbi2ast :: CBlockItem → Stmt TypeAttrs
 	cbi2ast (CBlockStmt stmt) = stmt2ast stmt
 	cbi2ast (CBlockDecl decl) = decl2stmt decl
 
-	mb_break_compound (CCompound _ cbis ni) = Compound True (map cbi2ast cbis) (ni2loc ni)
-	mb_break_compound other = stmt2ast other
-
-	emptyStmt ni = Compound False [] (ni2loc ni)
+	mb_break_compound (CCompound _ cbis ni) = Compound True (concatMap cbi2ast cbis) (ni2loc ni)
+	mb_break_compound other = stmt where
+		[stmt] = stmt2ast other
 
 	stmt2ast :: CStat → Stmt TypeAttrs
-	stmt2ast (CCompound _ cbis ni) = Compound False (map cbi2ast cbis) (ni2loc ni)
-	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (stmt2ast stmt) (ni2loc ni)
+	stmt2ast (CCompound _ cbis ni) = Compound False (concatMap cbi2ast cbis) (ni2loc ni)
+	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (ni2loc ni) : stmt2ast stmt
 	stmt2ast (CIf expr then_stmt mb_else_stmt ni) =
-		IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt (ni2loc ni) where
+		[ IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt (ni2loc ni) ]
+		where
 		else_stmt = case mb_else_stmt of
-			Nothing     → emptyStmt then_stmt
+			Nothing     → []
 			Just e_stmt → stmt2ast e_stmt
 	stmt2ast (CExpr mb_expr ni) = case mb_expr of
-		Just expr → ExprStmt (expr2ast expr) (ni2loc ni)
-		Nothing   → emptyStmt ni
+		Just expr → [ ExprStmt (expr2ast expr) (ni2loc ni) ]
+		Nothing   → []
 	stmt2ast (CWhile cond body is_dowhile ni) =
-		(if is_dowhile then DoWhile else While) (expr2ast cond) (mb_break_compound body) (ni2loc ni)
+		[ (if is_dowhile then DoWhile else While) (expr2ast cond) (mb_break_compound body) (ni2loc ni) ]
 	stmt2ast (CFor mb_expr_or_decl (Just cond) mb_inc body ni) =
-		For ini (expr2ast cond) incs (mb_break_compound body) (ni2loc ni)
+		Compound False (inis ++ [ For (expr2ast cond) incs (mb_break_compound body) (ni2loc ni) ]) introLoc
 		where
-		ini = case mb_expr_or_decl of
-			Left (Just ini_expr) → ExprStmt (expr2ast ini_expr) (ni2loc ini_expr)
+		inis = case mb_expr_or_decl of
+			Left (Just ini_expr) → [ ExprStmt (expr2ast ini_expr) (ni2loc ini_expr) ]
 			Right cdecl          → decl2stmt cdecl
 		incs = case mb_inc of
-			Nothing       → emptyStmt introLoc
+			Nothing       → []
 			Just inc_expr → [ ExprStmt (expr2ast inc_expr) (ni2loc inc_expr) ]
-	stmt2ast (CGoto cident ni) = Goto (cident2ident cident) (ni2loc ni)
-	stmt2ast (CCont ni) = Continue (ni2loc ni)
-	stmt2ast (CBreak ni) = Break (ni2loc ni)
-	stmt2ast (CDefault stmt ni) = Default (stmt2ast stmt) (ni2loc ni)
-	stmt2ast (CReturn mb_expr ni) = Return (fmap expr2ast mb_expr) (ni2loc ni)
-	stmt2ast (CSwitch expr body ni) = Switch (expr2ast expr) (mb_break_compound body) (ni2loc ni)
-	stmt2ast (CCase expr stmt ni) = Case (expr2ast expr) (stmt2ast stmt) (ni2loc ni)
+	stmt2ast (CGoto cident ni) = [ Goto (cident2ident cident) (ni2loc ni) ]
+	stmt2ast (CCont ni) = [ Continue (ni2loc ni) ]
+	stmt2ast (CBreak ni) = [ Break (ni2loc ni) ]
+	stmt2ast (CDefault stmt ni) = [ Default (stmt2ast stmt) (ni2loc ni) ]
+	stmt2ast (CReturn mb_expr ni) = [ Return (fmap expr2ast mb_expr) (ni2loc ni) ]
+	stmt2ast (CSwitch expr body ni) = [ Switch (expr2ast expr) (mb_break_compound body) (ni2loc ni) ]
+	stmt2ast (CCase expr stmt ni) = [ Case (expr2ast expr) (stmt2ast stmt) (ni2loc ni) ]
 	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
 	expr2ast :: CExpr → Expr TypeAttrs
@@ -400,10 +410,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 
 	infer_stmt :: [TyEnv] → [Stmt TypeAttrs] → [Stmt ZType]
 	infer_stmt _ [] = []
-	infer_stmt tyenvs@(tyenv:resttyenvs) ((Decls vardecls loc):stmts) =
-		infer_stmt ((newenvitems++tyenv):resttyenvs) stmts
+	infer_stmt tyenvs@(tyenv:resttyenvs) ((AST.Decl vardecl loc):stmts) =
+		infer_stmt ((newenvitem:tyenv):resttyenvs) stmts
 		where
-		newenvitems = map (vardecl2envitem.infer_vardecl) vardecls
+		newenvitem = vardecl2envitem $ infer_vardecl vardecl
 
 	infer_stmt tyenvs (stmt:stmts) = stmt' : infer_stmt tyenvs stmts
 		where
@@ -427,11 +437,11 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 				cond'   = infer_expr tyenvs (Just ZBool) cond
 				[body'] = infer_stmt tyenvs [body]
 
-			For inits cond inc body loc → For inits' cond' inc' body' loc where
-				[inits'] = infer_stmt tyenvs [inits]
-				cond'    = infer_expr tyenvs (Just ZBool) cond
-				[inc']   = infer_stmt tyenvs [inc]
-				[body']  = infer_stmt tyenvs [body]
+			For inits cond incs body loc → For inits' cond' incs' body' loc where
+				inits'  = infer_stmt tyenvs inits
+				cond'   = infer_expr tyenvs (Just ZBool) cond
+				incs'   = infer_stmt tyenvs incs
+				[body'] = infer_stmt tyenvs [body]
 
 			Switch val body loc → Switch (infer_expr tyenvs Nothing val) body' loc where
 				[body']  = infer_stmt tyenvs [body]

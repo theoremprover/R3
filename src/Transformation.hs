@@ -100,9 +100,9 @@ elimConstructs ast = transformBiM rules ast
   	-- and also breaks the "Compound True [body ..." compound, because it is the last compound in the whole compound
 	rules (DoWhile cond body loc) = return $ Compound True [body,While cond body loc] loc
 
-	rules (For inis cond incs body loc) = do
+	rules (For cond incs body loc) = do
 		let body' = Compound True (body:incs) (locS body)
-		return $ Compound True (inis ++ [While cond body' loc]) loc
+		return $ While cond body' loc
 
 {-
 switch(expr)
@@ -178,4 +178,16 @@ asta = C [ExpStm (V 1), C [ExpStm (I (V 9)),ExpStm (V 3)]]
 test = mapM_ print [ (show stm) |
 	stm :: Stm <- universeBi asta,
 	True ]
+-}
+
+{-
+infer_expr
+	Assign {
+		lexprE = Var {identE = Ident {nameIdent = "a", idIdent = 97, locIdent = switchtest.c, line 3, col 9, len 1},
+		typeE = Just (DirectType (TyIntegral int) (TypeQuals {constant = False, volatile = False, restrict = False, atomic = False, nullable = False, nonnull = False, clrdonly = False, clwronly = False}) [],[]),
+		locE = switchtest.c, line 3, col 9, len 1},
+		exprE = Constant {constE = IntConst 0, typeE = Just (DirectType (TyIntegral int) (TypeQuals {constant = False, volatile = False, restrict = False, atomic = False, nullable = False, nonnull = False, clrdonly = False, clwronly = False}) [],[]), locE = switchtest.c, line 3, col 13, len 1},
+		typeE = Just (DirectType (TyIntegral int) (TypeQuals {constant = False, volatile = False, restrict = False, atomic = False, nullable = False, nonnull = False, clrdonly = False, clwronly = False}) [],[]), locE = switchtest.c, line 3, col 9, len 1}
+		not implemented
+
 -}

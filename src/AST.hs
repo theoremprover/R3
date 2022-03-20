@@ -105,10 +105,10 @@ commentExtDecl vardecl loc doc = vcat [hardline,comment,emptyDoc,doc]
 	name = nameIdent (identVD vardecl)
 	comment = pretty p1 <+> pretty name <+> parens (pretty loc) <+> pretty (take (120 - (length p1 + length name)) p2)
 
-data FunDef a = FunDef [VarDeclaration a] (Stmt a)
+data FunDef a = FunDef [VarDeclaration a] [Stmt a]
 	deriving (Show,Generic,Data,Typeable)
 instance (Show a,Pretty a) => Pretty (FunDef a) where
-	pretty (FunDef argdecls body) = vcat [ parens (hsep $ punctuate comma $ map pretty argdecls), pretty body ]
+	pretty (FunDef argdecls body) = vcat $ parens (hsep $ punctuate comma $ map pretty argdecls) : map pretty body
 
 data Expr a =
 	Assign   { lexprE :: Expr a,   exprE   :: Expr a,   typeE  :: a,      locE  :: Loc            } |
@@ -188,17 +188,17 @@ instance Pretty Const where
 	pretty (StringConst s) = viaShow s
 
 data Stmt a =
-	Decls      { vardeclsS :: [VarDeclaration a], locS      :: Loc } |
-	Label      { identS    :: Ident,              stmtS     :: Stmt a, locS      :: Loc } |
+	Decl       { vardeclS  :: VarDeclaration a,   locS      :: Loc } |
+	Label      { identS    :: Ident,              locS      :: Loc } |
 	Compound   { catchBrkS :: Bool,               stmtsS    :: [Stmt a], locS      :: Loc } |
 	IfThenElse { condS     :: Expr a,             thenstmtS :: Stmt a, elsestmtS :: Stmt a, locS :: Loc } |
 	ExprStmt   { exprS     :: Expr a,             locS      :: Loc } |
 	While      { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
 	DoWhile    { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
-	For        { initS     :: [Stmt a],           condS     :: Expr a, incS      :: [Stmt a], bodyS   :: Stmt a, locS      :: Loc } |
+	For        { condS     :: Expr a,             incS      :: Stmt a, bodyS   :: Stmt a, locS      :: Loc } |
 	Switch     { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
 	Case       { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
-	Cases      { loCondS   :: Expr a,             hiCondS   :: Expr a, bodyS     :: Stmt a, locS      :: Loc } |
+	Cases      { loCondS   :: Expr a,             hiCondS   :: Expr a, bodyS     :: [Stmt a], locS      :: Loc } |
 	Return     { mbexprS   :: Maybe (Expr a),     locS      :: Loc } |
 	Continue   { locS      :: Loc } |
 	Default    { bodyS     :: Stmt a,             locS      :: Loc } |
@@ -218,9 +218,9 @@ instance (Pretty a,Show a) => Pretty (Stmt a) where
 			_              → nest 4 doc
 	pretty (While cond body loc) = vcat [ pretty "while" <> parens (pretty cond) <+> locComment loc, pretty body ]
 	pretty (DoWhile cond body loc) = vcat [ pretty "do" <+> locComment loc, pretty body, pretty "while" <> parens (pretty cond) ]
-	pretty (For inis cond incs body loc) = vcat [ pretty "for" <> parens (
+	pretty (For cond incs body loc) = vcat [ pretty "for" <> parens (
 		hcat $ punctuate semi [
-			hcat $ punctuate comma (map pretty inis),
+			emptyDoc,
 			pretty cond,
 			hcat $ punctuate comma (map pretty incs) ]
 			) <+> locComment loc,
@@ -231,21 +231,21 @@ instance (Pretty a,Show a) => Pretty (Stmt a) where
 	pretty (Cases locond hicond body loc) = vcat [ pretty "case" <+> pretty locond <+> pretty "..." <+> pretty hicond <+> pretty ":" <+> locComment loc, pretty body ]
 	pretty stmt = stmt_doc <+> locComment (locS stmt) where
 		stmt_doc = case stmt of
-			Decls vardecls _                → vcat $ punctuate semi $ map pretty vardecls
-			Label ident stmt _              → vcat [ pretty ident <> colon, pretty stmt ]
-			ExprStmt expr _                 → pretty expr <> semi
-			Return mb_expr _                → pretty "return" <> parens (maybe emptyDoc pretty mb_expr) <> semi
-			Continue _                      → pretty "continue" <> semi
-			Break _                         → pretty "break" <> semi
-			Goto ident _                    → pretty "goto" <+> pretty ident <> semi
-			other                           → error $ "pretty " ++ show other ++ " not implemented"
+			Decl vardecl _     → pretty vardecl <> semi
+			Label ident _      → vcat [ pretty ident <> colon ]
+			ExprStmt expr _    → pretty expr <> semi
+			Return mb_expr _   → pretty "return" <> parens (maybe emptyDoc pretty mb_expr) <> semi
+			Continue _         → pretty "continue" <> semi
+			Break _            → pretty "break" <> semi
+			Goto ident _       → pretty "goto" <+> pretty ident <> semi
+			other              → error $ "pretty " ++ show other ++ " not implemented"
 
 locComment loc = column $ \ col → (pretty $ take (120 - col) (repeat ' ') ++ "// ----------") <+> pretty loc
 
 ------ 𝖺𝖻𝖼𝖽𝖾𝖿𝗀𝗁𝗂𝗃𝗄𝗅𝗆𝗇𝗈𝗉𝗊𝗋𝗌𝗍𝗎𝗏𝗐𝗑𝗒𝗓
 
 infixr 2 ≔
-(≔) :: Expr ZType -> Expr ZType -> Stmt ZType
+(≔) :: Expr a -> Expr a -> Stmt a
 a ≔ b = ExprStmt (Assign a b (typeE a) (locE a)) (locE a)
 
 𝗂𝖿 :: Expr ZType -> Stmt ZType -> Stmt ZType -> Stmt ZType
