@@ -15,7 +15,7 @@ import DataTree
 import AST
 import Transformation
 
-function_name = "_fpmul_parts"
+function_name = "f" --"_fpmul_parts"
 file_name = "switchtest.c"
 
 main :: IO ()
@@ -39,7 +39,8 @@ mainR3 = do
 		Left errmsg → do
 			liftIO $ putStrLn errmsg
 			return Nothing
-		Right (raw_ast,typed_ast) → do
+		Right (typeattrs_ast,typed_ast) → do
+			liftIO $ writeFile "translunit.TypeAttrs" $ prettyTranslUnitString typeattrs_ast
 			liftIO $ writeFile "translunit.ZType" $ prettyTranslUnitString typed_ast
 			ast <- transformAST typed_ast
 			liftIO $ writeFile "transformed.ZType" $ prettyTranslUnitString ast

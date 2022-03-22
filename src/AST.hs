@@ -207,12 +207,12 @@ data Stmt a =
 	deriving (Show,Generic,Data,Typeable)
 instance (Pretty a,Show a) => Pretty (Stmt a) where
 	pretty (Compound breaks stmts _) = vcat [ nest 4 $ vcat $
-		((lbrace <+> pretty (if breaks then "// breaks" else "")) : map pretty stmts), rbrace ]
+		((lbrace <+> pretty (if breaks then "         // catches break" else "")) : map pretty stmts), rbrace ]
 	pretty (IfThenElse cond then_s else_s loc) = vcat $ [ pretty "if" <> parens (pretty cond) <+> locComment loc, pretty then_s ] ++ case else_s of
 		Compound _ [] _ → []
-		else_stmt       → [ mb_singleline else_stmt $ vcat [ pretty "else", pretty else_stmt ] ]
+		else_stmt       → [ vcat [ pretty "else", pretty else_stmt ] ]
 		where
-		mb_singleline :: (Stmt a) -> Doc ann -> Doc ann
+		mb_singleline :: Stmt a -> Doc ann -> Doc ann
 		mb_singleline comp doc = case comp of
 			Compound _ _ _ → doc
 			_              → nest 4 doc
@@ -226,9 +226,9 @@ instance (Pretty a,Show a) => Pretty (Stmt a) where
 			) <+> locComment loc,
 		pretty body ]
 	pretty (Switch val body loc) = vcat [ pretty "switch" <> parens (pretty val) <+> locComment loc, pretty body ]
-	pretty (Case cond body loc) = vcat [ pretty "case" <+> pretty cond <+> pretty ":" <+> locComment loc, pretty body ]
-	pretty (Default body loc) = vcat [ pretty "default" <> pretty ":" <+> locComment loc, pretty body ]
-	pretty (Cases locond hicond body loc) = vcat [ pretty "case" <+> pretty locond <+> pretty "..." <+> pretty hicond <+> pretty ":" <+> locComment loc, pretty body ]
+	pretty (Case cond body loc) = nest 4 $ vcat [ pretty "case" <+> pretty cond <+> pretty ":" <+> locComment loc, pretty body ]
+	pretty (Default body loc) = nest 4 $ vcat [ pretty "default" <> pretty ":" <+> locComment loc, pretty body ]
+	pretty (Cases locond hicond body loc) = nest 4 $ vcat [ pretty "case" <+> pretty locond <+> pretty "..." <+> pretty hicond <+> pretty ":" <+> locComment loc, pretty body ]
 	pretty stmt = stmt_doc <+> locComment (locS stmt) where
 		stmt_doc = case stmt of
 			Decl vardecl _     → pretty vardecl <> semi

@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-tabs #-}
-{-# LANGUAGE RecordWildCards,TupleSections,LambdaCase,UnicodeSyntax,PackageImports,StandaloneDeriving,DeriveGeneric #-}
+{-# LANGUAGE RecordWildCards,TypeSynonymInstances,FlexibleInstances,TupleSections,LambdaCase,UnicodeSyntax,PackageImports,StandaloneDeriving,DeriveGeneric #-}
 
 module Parsing (
 	parseFile)
@@ -61,6 +61,9 @@ deriving instance Generic VarName
 
 
 type TypeAttrs = Maybe (Type,Attributes)
+instance {-# OVERLAPS #-} Pretty TypeAttrs where
+	pretty Nothing = Prettyprinter.pretty "?"
+	pretty (Just (ty,attrs)) = parens $ (Prettyprinter.pretty ty) <> comma <> (Prettyprinter.pretty attrs)
 
 renderpretty ::(LangCPretty.Pretty a) => a -> String
 renderpretty a = TextPretty.render $ LangCPretty.pretty $ a
@@ -89,10 +92,12 @@ parseFile filepath = do
 					return $ Right $ globDecls2AST machinespec deftable globaldecls
 
 type TyEnvItem = (Ident,ZType)
+instance {-# OVERLAPS #-} Pretty TyEnvItem where
+	pretty (ident,zty) = Prettyprinter.pretty ident <+> colon <> colon <+> Prettyprinter.pretty zty
 type TyEnv = [TyEnvItem]
 
 showTyEnv :: TyEnv -> String
-showTyEnv tyenv = unlines $ map show tyenv
+showTyEnv tyenv = unlines $ map (show.(Prettyprinter.pretty)) tyenv
 
 globDecls2AST :: MachineSpec → DefTable → GlobalDecls → (TranslUnit TypeAttrs,TranslUnit ZType)
 globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,translsunit_ztype)
