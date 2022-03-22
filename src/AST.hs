@@ -105,10 +105,10 @@ commentExtDecl vardecl loc doc = vcat [hardline,comment,emptyDoc,doc]
 	name = nameIdent (identVD vardecl)
 	comment = pretty p1 <+> pretty name <+> parens (pretty loc) <+> pretty (take (120 - (length p1 + length name)) p2)
 
-data FunDef a = FunDef [VarDeclaration a] [Stmt a]
+data FunDef a = FunDef [VarDeclaration a] (Stmt a)
 	deriving (Show,Generic,Data,Typeable)
 instance (Show a,Pretty a) => Pretty (FunDef a) where
-	pretty (FunDef argdecls body) = vcat $ parens (hsep $ punctuate comma $ map pretty argdecls) : map pretty body
+	pretty (FunDef argdecls body) = vcat [ parens (hsep $ punctuate comma $ map pretty argdecls), pretty body ]
 
 data Expr a =
 	Assign   { lexprE :: Expr a,   exprE   :: Expr a,   typeE  :: a,      locE  :: Loc            } |
@@ -198,7 +198,7 @@ data Stmt a =
 	For        { condS     :: Expr a,             incS      :: Stmt a, bodyS   :: Stmt a, locS      :: Loc } |
 	Switch     { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
 	Case       { condS     :: Expr a,             bodyS     :: Stmt a, locS      :: Loc } |
-	Cases      { loCondS   :: Expr a,             hiCondS   :: Expr a, bodyS     :: [Stmt a], locS      :: Loc } |
+	Cases      { loCondS   :: Expr a,             hiCondS   :: Expr a, bodyS     :: Stmt a, locS      :: Loc } |
 	Return     { mbexprS   :: Maybe (Expr a),     locS      :: Loc } |
 	Continue   { locS      :: Loc } |
 	Default    { bodyS     :: Stmt a,             locS      :: Loc } |
@@ -218,11 +218,11 @@ instance (Pretty a,Show a) => Pretty (Stmt a) where
 			_              → nest 4 doc
 	pretty (While cond body loc) = vcat [ pretty "while" <> parens (pretty cond) <+> locComment loc, pretty body ]
 	pretty (DoWhile cond body loc) = vcat [ pretty "do" <+> locComment loc, pretty body, pretty "while" <> parens (pretty cond) ]
-	pretty (For cond incs body loc) = vcat [ pretty "for" <> parens (
+	pretty (For cond inc body loc) = vcat [ pretty "for" <> parens (
 		hcat $ punctuate semi [
 			emptyDoc,
 			pretty cond,
-			hcat $ punctuate comma (map pretty incs) ]
+			pretty inc ]
 			) <+> locComment loc,
 		pretty body ]
 	pretty (Switch val body loc) = vcat [ pretty "switch" <> parens (pretty val) <+> locComment loc, pretty body ]

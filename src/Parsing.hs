@@ -153,15 +153,15 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 
 	cbi2ast :: CBlockItem → Stmt TypeAttrs
 	cbi2ast (CBlockStmt stmt) = stmt2ast stmt
-	cbi2ast (CBlockDecl decl) = decl2stmt decl
+	cbi2ast (CBlockDecl decl) = mb_compound_stmts $ decl2stmt decl
 
-	mb_break_compound (CCompound _ cbis ni) = Compound True (concatMap cbi2ast cbis) (ni2loc ni)
-	mb_break_compound other = stmt where
-		[stmt] = stmt2ast other
+	-- makes a compound breakable
+	mb_break_compound (CCompound _ cbis ni) = Compound True (map cbi2ast cbis) (ni2loc ni)
+	mb_break_compound other = stmt2ast other
 
 	stmt2ast :: CStat → Stmt TypeAttrs
-	stmt2ast (CCompound _ cbis ni) = Compound False (concatMap cbi2ast cbis) (ni2loc ni)
-	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (ni2loc ni) : stmt2ast stmt
+	stmt2ast (CCompound _ cbis ni) = Compound False (map cbi2ast cbis) (ni2loc ni)
+	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (ni2loc ni) stmt2ast stmt
 	stmt2ast (CIf expr then_stmt mb_else_stmt ni) =
 		[ IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt (ni2loc ni) ]
 		where

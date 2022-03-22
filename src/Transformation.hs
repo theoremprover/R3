@@ -100,8 +100,8 @@ elimConstructs ast = transformBiM rules ast
   	-- and also breaks the "Compound True [body ..." compound, because it is the last compound in the whole compound
 	rules (DoWhile cond body loc) = return $ Compound True [body,While cond body loc] loc
 
-	rules (For cond incs body loc) = do
-		let body' = Compound True (body:incs) (locS body)
+	rules (For cond inc body loc) = do
+		let body' = Compound True [body,inc] (locS body)
 		return $ While cond body' loc
 
 {-
