@@ -143,7 +143,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 			ObjectDef (ObjDef vardecl mb_init _)       → Left $ fmap (initializer2expr (typeVD vardeclast)) mb_init
 
 	initializer2expr :: TypeAttrs → CInitializer NodeInfo → Expr TypeAttrs
-	initializer2expr _       (CInitExpr expr _)     = expr2ast expr
+	initializer2expr _       (CInitExpr expr _)      = expr2ast expr
 	initializer2expr tyattrs (CInitList initlist ni) = Comp idexprs tyattrs (ni2loc ni) where
 		idexprs = for initlist $ \ ([],initializer) → initializer2expr tyattrs initializer
 
@@ -159,20 +159,23 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 	mb_break_compound (CCompound _ cbis ni) = Compound True (map cbi2ast cbis) (ni2loc ni)
 	mb_break_compound other = stmt2ast other
 
+	emptyStmt :: Stmt TypeAttrs
+	emptyStmt = Compound False [] introLoc
+
 	stmt2ast :: CStat → Stmt TypeAttrs
 	stmt2ast (CCompound _ cbis ni) = Compound False (map cbi2ast cbis) (ni2loc ni)
-	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (ni2loc ni) stmt2ast stmt
+	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (stmt2ast stmt) (ni2loc ni)
 	stmt2ast (CIf expr then_stmt mb_else_stmt ni) =
-		[ IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt (ni2loc ni) ]
+		IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt (ni2loc ni)
 		where
 		else_stmt = case mb_else_stmt of
-			Nothing     → []
+			Nothing     → emptyStmt
 			Just e_stmt → stmt2ast e_stmt
 	stmt2ast (CExpr mb_expr ni) = case mb_expr of
-		Just expr → [ ExprStmt (expr2ast expr) (ni2loc ni) ]
-		Nothing   → []
+		Just expr → ExprStmt (expr2ast expr) (ni2loc ni)
+		Nothing   → emptyStmt
 	stmt2ast (CWhile cond body is_dowhile ni) =
-		[ (if is_dowhile then DoWhile else While) (expr2ast cond) (mb_break_compound body) (ni2loc ni) ]
+		(if is_dowhile then DoWhile else While) (expr2ast cond) (mb_break_compound body) (ni2loc ni)
 	stmt2ast (CFor mb_expr_or_decl (Just cond) mb_inc body ni) =
 		Compound False (inis ++ [ For (expr2ast cond) incs (mb_break_compound body) (ni2loc ni) ]) introLoc
 		where
@@ -180,15 +183,15 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 			Left (Just ini_expr) → [ ExprStmt (expr2ast ini_expr) (ni2loc ini_expr) ]
 			Right cdecl          → decl2stmt cdecl
 		incs = case mb_inc of
-			Nothing       → []
-			Just inc_expr → [ ExprStmt (expr2ast inc_expr) (ni2loc inc_expr) ]
-	stmt2ast (CGoto cident ni) = [ Goto (cident2ident cident) (ni2loc ni) ]
-	stmt2ast (CCont ni) = [ Continue (ni2loc ni) ]
-	stmt2ast (CBreak ni) = [ Break (ni2loc ni) ]
-	stmt2ast (CDefault stmt ni) = [ Default (stmt2ast stmt) (ni2loc ni) ]
-	stmt2ast (CReturn mb_expr ni) = [ Return (fmap expr2ast mb_expr) (ni2loc ni) ]
-	stmt2ast (CSwitch expr body ni) = [ Switch (expr2ast expr) (mb_break_compound body) (ni2loc ni) ]
-	stmt2ast (CCase expr stmt ni) = [ Case (expr2ast expr) (stmt2ast stmt) (ni2loc ni) ]
+			Nothing       → emptyStmt
+			Just inc_expr → ExprStmt (expr2ast inc_expr) (ni2loc inc_expr)
+	stmt2ast (CGoto cident ni) = Goto (cident2ident cident) (ni2loc ni)
+	stmt2ast (CCont ni) = Continue (ni2loc ni)
+	stmt2ast (CBreak ni) = Break (ni2loc ni)
+	stmt2ast (CDefault stmt ni) = Default (stmt2ast stmt) (ni2loc ni)
+	stmt2ast (CReturn mb_expr ni) = Return (fmap expr2ast mb_expr) (ni2loc ni)
+	stmt2ast (CSwitch expr body ni) = Switch (expr2ast expr) (mb_break_compound body) (ni2loc ni)
+	stmt2ast (CCase expr stmt ni) = Case (expr2ast expr) (stmt2ast stmt) (ni2loc ni)
 	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
 	expr2ast :: CExpr → Expr TypeAttrs
@@ -437,10 +440,9 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 				cond'   = infer_expr tyenvs (Just ZBool) cond
 				[body'] = infer_stmt tyenvs [body]
 
-			For inits cond incs body loc → For inits' cond' incs' body' loc where
-				inits'  = infer_stmt tyenvs inits
+			For cond inc body loc → For cond' inc' body' loc where
 				cond'   = infer_expr tyenvs (Just ZBool) cond
-				incs'   = infer_stmt tyenvs incs
+				[inc']  = infer_stmt tyenvs [inc]
 				[body'] = infer_stmt tyenvs [body]
 
 			Switch val body loc → Switch (infer_expr tyenvs Nothing val) body' loc where

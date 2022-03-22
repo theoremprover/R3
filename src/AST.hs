@@ -189,7 +189,7 @@ instance Pretty Const where
 
 data Stmt a =
 	Decl       { vardeclS  :: VarDeclaration a,   locS      :: Loc } |
-	Label      { identS    :: Ident,              locS      :: Loc } |
+	Label      { identS    :: Ident,              stmtS     :: Stmt a,   locS      :: Loc } |
 	Compound   { catchBrkS :: Bool,               stmtsS    :: [Stmt a], locS      :: Loc } |
 	IfThenElse { condS     :: Expr a,             thenstmtS :: Stmt a, elsestmtS :: Stmt a, locS :: Loc } |
 	ExprStmt   { exprS     :: Expr a,             locS      :: Loc } |
@@ -232,7 +232,7 @@ instance (Pretty a,Show a) => Pretty (Stmt a) where
 	pretty stmt = stmt_doc <+> locComment (locS stmt) where
 		stmt_doc = case stmt of
 			Decl vardecl _     → pretty vardecl <> semi
-			Label ident _      → vcat [ pretty ident <> colon ]
+			Label ident stmt _ → vcat [ pretty ident <> colon, pretty stmt ]
 			ExprStmt expr _    → pretty expr <> semi
 			Return mb_expr _   → pretty "return" <> parens (maybe emptyDoc pretty mb_expr) <> semi
 			Continue _         → pretty "continue" <> semi
