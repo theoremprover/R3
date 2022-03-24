@@ -60,20 +60,13 @@ deriving instance Generic Linkage
 deriving instance Generic VarName
 
 
-type TypeAttrs = Maybe (Type,Attributes)
-instance {-# OVERLAPS #-} Pretty TypeAttrs where
-	pretty Nothing = Prettyprinter.pretty "?"
-	pretty (Just (ty,attrs)) = parens $ (Prettyprinter.pretty ty) <> comma <> (Prettyprinter.pretty attrs)
-
 renderpretty ::(LangCPretty.Pretty a) => a -> String
 renderpretty a = TextPretty.render $ LangCPretty.pretty $ a
 
 instance Pretty Type where
 	pretty ty = Prettyprinter.pretty $ renderpretty ty
-instance Pretty Attr where
-	pretty attr = Prettyprinter.pretty $ renderpretty attr
 
-parseFile :: FilePath → R3 (Either String (TranslUnit TypeAttrs,TranslUnit ZType))
+parseFile :: FilePath → R3 (Either String TranslUnit)
 parseFile filepath = do
 	gcc <- gets compilerR3
 	liftIO $ parseCFile (newGCC gcc) Nothing [] filepath >>= \case
@@ -91,18 +84,18 @@ parseFile filepath = do
 					machinespec <- getMachineSpec gcc
 					return $ Right $ globDecls2AST machinespec deftable globaldecls
 
-type TyEnvItem = (Ident,ZType)
-instance {-# OVERLAPS #-} Pretty TyEnvItem where
-	pretty (ident,zty) = Prettyprinter.pretty ident <+> colon <> colon <+> Prettyprinter.pretty zty
-type TyEnv = [TyEnvItem]
+globDecls2AST :: MachineSpec → DefTable → GlobalDecls → TranslUnit
+globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
+	sortBy (comparing locED) $ map identdecl2extdecl $ ASTMap.elems gObjs
 
-showTyEnv :: TyEnv -> String
-showTyEnv tyenv = unlines $ map (show.(Prettyprinter.pretty)) tyenv
-
-globDecls2AST :: MachineSpec → DefTable → GlobalDecls → (TranslUnit TypeAttrs,TranslUnit ZType)
-globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,translsunit_ztype)
 	where
-	translunit_typeattrs = sortBy (comparing locED) $ map identdecl2extdecl $ ASTMap.elems gObjs
+
+	global_tyenv :: TyEnv
+	global_tyenv = for (ASTMap.assocs gObjs) $ \ (ident,decl) → ( cident2ident ident, decl2zty decl )
+
+	decl2zty decl = ty2zty (declType decl,attrs)
+		where
+		DeclAttrs _ _ attrs = declAttrs decl
 
 	ni2loc :: (CNode n) => n → Loc
 	ni2loc n = let ni = nodeInfo n in case posOf ni of
@@ -112,6 +105,174 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 	cident2ident :: CIdent.Ident → Ident
 	cident2ident (CIdent.Ident name i ni) = Ident name i (ni2loc ni)
 
+	ty2zty :: (Type,Attributes) → ZType
+	ty2zty (ty,attrs) = case ty of
+		DirectType tyname _ tyattrs → case tyname of
+			TyIntegral intty → case (intty,modes) of
+				(TyChar,[])     → ZInt  8 True
+				(TySChar,[])    → ZInt  8 False
+				(TyUChar,[])    → ZInt  8 True
+				(TyShort,[])    → ZInt 16 False
+				(TyUShort,[])   → ZInt 16 True
+				(TyInt,[])      → ZInt intSize False
+				(TyInt,["SI"])  → ZInt 32 False
+				(TyInt,["DI"])  → ZInt 64 False
+				(TyUInt,[])     → ZInt intSize True
+				(TyUInt,["SI"]) → ZInt 32 True
+				(TyUInt,["DI"]) → ZInt 64 True
+				(TyLong,[])     → ZInt longSize False
+				(TyULong,[])    → ZInt longSize True
+				(TyLLong,[])    → ZInt longLongSize False
+				(TyULLong,[])   → ZInt longLongSize True
+				other           → error $ "ty2zty " ++ show other ++ " not implemented!"
+			TyFloating floatty → case (floatty,modes) of
+				(TyFloat,[])     → ZFloat  8  24
+				(TyFloat,["SF"]) → ZFloat  8  24
+				(TyFloat,["DF"]) → ZFloat 11  53
+				(TyDouble,[])    → ZFloat 11  53
+				(TyLDouble,[])   → ZFloat 15 113
+				other            → error $ "ty2zty " ++ show other ++ " not implemented!"
+			TyVoid             → ZUnit
+			TyEnum enumtyperef → resolve_sueref enumtyperef
+			TyComp comptyperef → resolve_sueref comptyperef
+			_                  → ZUnhandled $ renderpretty ty
+
+			where
+
+			resolve_sueref :: (HasSUERef a) => a → ZType
+			resolve_sueref hassueref = case ASTMap.lookup sueref gTags of
+				Nothing → error $ "Could not find " ++ show sueref ++ " in gTags"
+				Just (CompDef (CompType sueref comptykind memberdecls attrs _)) →
+					ZCompound (renderpretty sueref) (compkind2comptype comptykind)
+						(map decl2vardecl memberdecls)
+				Just (EnumDef (EnumType sueref enumerators attrs ni)) →
+					ZEnum (renderpretty sueref) $ for enumerators $ \ (Enumerator ident expr _ ni) →
+						(cident2ident ident,eval_const_expr expr)
+				where
+				sueref = sueRef hassueref
+				compkind2comptype StructTag = Struct
+				compkind2comptype UnionTag  = Union
+
+			modes = nub $ concat $ for (tyattrs++attrs) $ \case
+				Attr (CIdent.Ident "mode" _ _) [CVar (CIdent.Ident mode _ _) _] _ → [mode]
+				Attr (CIdent.Ident "fardata" _ _) _ _                             → []
+				Attr (CIdent.Ident "__cdecl__" _ _) _ _                           → []
+				attr → error $ "mode: unknown attr " ++ show attr
+
+		FunctionType (FunType ret_ty paramdecls isvariadic) _ →
+			ZFun (ty2zty (ret_ty,noAttributes)) isvariadic (map decl2zty paramdecls)
+
+		PtrType ty _ attrs → ZPtr (ty2zty (ty,attrs))
+
+		ArrayType ty arr_size _ attrs → ZArray (ty2zty (ty,attrs)) $ case arr_size of
+			UnknownArraySize _ → Nothing
+			ArraySize _ expr   → Just $ eval_const_expr expr
+
+		TypeDefType (TypeDefRef _ ty _) _ attrs → ty2zty (ty,attrs)
+
+		other → error $ "ty2zty " ++ show other ++ " not implemented"
+
+		where
+
+		eval_const_expr :: CExpr -> Integer
+		eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
+
+	identdecl2extdecl :: IdentDecl → ExtDecl
+	identdecl2extdecl identdecl = ExtDecl (decl2vardecl identdecl) (Left Nothing) (ni2loc identdecl)
+
+	decl2vardecl :: (CNode d,Declaration d) => d → VarDeclaration
+	decl2vardecl decl = VarDeclaration (cident2ident $ identOfVarName varname) (renderpretty ty) zty (ni2loc decl)
+		where
+		VarDecl varname _ ty = getVarDecl decl
+		zty = decl2zty decl
+
+{-
+	initializer2expr :: TypeAttrs → CInitializer NodeInfo → Expr TypeAttrs
+	initializer2expr _       (CInitExpr expr _)      = expr2ast expr
+	initializer2expr tyattrs (CInitList initlist ni) = Comp idexprs tyattrs (ni2loc ni) where
+		idexprs = for initlist $ \ ([],initializer) → initializer2expr tyattrs initializer
+
+	identdecl2extdecl :: IdentDecl → ExtDecl TypeAttrs
+	identdecl2extdecl identdecl = ExtDecl (decl2vardecl ni identdecl) body (ni2loc ni)
+		where
+		ni = nodeInfo identdecl
+		body = case identdecl of
+			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType _ paramdecls _) _)) stmt ni) →
+				Right $ AST.FunDef (map (decl2vardecl ni) paramdecls) (stmt2ast stmt)
+			SemRep.Declaration (SemRep.Decl vardecl _) → Left Nothing
+			EnumeratorDef (Enumerator _ expr _ _)      → Left $ Just $ expr2ast expr
+			ObjectDef (ObjDef vardecl mb_init _)       → Left $ fmap (initializer2expr (typeVD vardeclast)) mb_init
+
+	stmt2ast :: TyEnv → CStat → Stmt
+	stmt2ast (CCompound _ cbis ni) = Compound False (map cbi2ast cbis) (ni2loc ni)
+	stmt2ast (CLabel ident stmt _ ni) = Label (cident2ident ident) (stmt2ast stmt) (ni2loc ni)
+	stmt2ast (CIf expr then_stmt mb_else_stmt ni) =
+		IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt (ni2loc ni)
+		where
+		else_stmt = case mb_else_stmt of
+			Nothing     → emptyStmt
+			Just e_stmt → stmt2ast e_stmt
+	stmt2ast (CExpr mb_expr ni) = case mb_expr of
+		Just expr → ExprStmt (expr2ast expr) (ni2loc ni)
+		Nothing   → emptyStmt
+	stmt2ast (CWhile cond body is_dowhile ni) =
+		(if is_dowhile then DoWhile else While) (expr2ast cond) (mb_break_compound body) (ni2loc ni)
+	stmt2ast (CFor mb_expr_or_decl (Just cond) mb_inc body ni) =
+		Compound False (inis ++ [ For (expr2ast cond) incs (mb_break_compound body) (ni2loc ni) ]) introLoc
+		where
+		inis = case mb_expr_or_decl of
+			Left (Just ini_expr) → [ ExprStmt (expr2ast ini_expr) (ni2loc ini_expr) ]
+			Right cdecl          → decl2stmt cdecl
+		incs = case mb_inc of
+			Nothing       → emptyStmt
+			Just inc_expr → ExprStmt (expr2ast inc_expr) (ni2loc inc_expr)
+	stmt2ast (CGoto cident ni) = Goto (cident2ident cident) (ni2loc ni)
+	stmt2ast (CCont ni) = Continue (ni2loc ni)
+	stmt2ast (CBreak ni) = Break (ni2loc ni)
+	stmt2ast (CDefault stmt ni) = Default (stmt2ast stmt) (ni2loc ni)
+	stmt2ast (CReturn mb_expr ni) = Return (fmap expr2ast mb_expr) (ni2loc ni)
+	stmt2ast (CSwitch expr body ni) = Switch (expr2ast expr) (mb_break_compound body) (ni2loc ni)
+	stmt2ast (CCase expr stmt ni) = Case (expr2ast expr) (stmt2ast stmt) (ni2loc ni)
+	stmt2ast other = error $ "stmt2ast " ++ show other ++ " not implemented"
+
+	expr2ast :: CExpr → Expr TypeAttrs
+	expr2ast (CAssign ass_op lexpr rexpr ni) = Assign lexpr' expr' Nothing (ni2loc ni) where
+		lexpr' = expr2ast lexpr
+		rexpr' = expr2ast rexpr
+		expr'  = case ass_op of
+			CAssignOp → rexpr'
+			other_op  → Binary binop lexpr' rexpr' Nothing (ni2loc rexpr) where
+				Just binop = lookup ass_op [
+					(CMulAssOp,Mul),(CDivAssOp,Div),(CRmdAssOp,Rmd),(CAddAssOp,Add),(CSubAssOp,Sub),
+					(CShlAssOp,Shl),(CShrAssOp,Shr),(CAndAssOp,BitAnd),(CXorAssOp,BitXOr),(COrAssOp,BitOr) ]
+	expr2ast (CCond cond (Just then_expr) else_expr ni) =
+		CondExpr (expr2ast cond) (expr2ast then_expr) (expr2ast else_expr) Nothing (ni2loc ni)
+	expr2ast (CCast cdecl expr ni) = Cast (expr2ast expr) (Just (getCDeclType cdecl,[])) (ni2loc ni)
+	expr2ast (CBinary binop expr1 expr2 ni) = Binary binop' (expr2ast expr1) (expr2ast expr2) Nothing (ni2loc ni) where
+		Just binop' = lookup binop [
+			(CMulOp,Mul),(CDivOp,Div),(CRmdOp,Rmd),(CAddOp,Add),(CSubOp,Sub),(CShlOp,Shl),
+			(CShrOp,Shr),(CLeOp,LessEq),(CGrOp,Greater),(CLeqOp,LessEq),(CGeqOp,GreaterEq),(CEqOp,Equals),(CNeqOp,NotEquals),
+			(CAndOp,BitAnd),(CXorOp,BitXOr),(COrOp,BitOr),(CLndOp,And),(CLorOp,Or) ]
+	expr2ast (CUnary unop expr ni) = Unary unop' (expr2ast expr) Nothing (ni2loc ni) where
+		Just unop' = lookup unop [
+			(CPreIncOp,PreInc),(CPreDecOp,PreDec),(CPostIncOp,PostInc),(CPostDecOp,PostDec),(CAdrOp,AddrOf),
+			(CIndOp,Deref),(CPlusOp,Plus),(CMinOp,Minus),(CCompOp,BitNeg),(CNegOp,Not) ]
+	expr2ast (CIndex arr index ni) = Index (expr2ast arr) (expr2ast index) Nothing (ni2loc ni)
+	expr2ast (CConst ctconst) = Constant const' (Just ty) (ni2loc ni) where
+		(const',ty,ni) = case ctconst of
+			CIntConst cinteger@(CInteger _ _ flags) ni → (IntConst (getCInteger cinteger),(integral $ getIntType flags,[]),ni)
+			CCharConst cchar ni       → (CharConst (read $ getCChar cchar),(integral TyChar,[]),ni)
+			CFloatConst (CFloat f) ni → (FloatConst (read f),(floating $ getFloatType f,[]),ni)
+			CStrConst cstring ni      → (StringConst $ (getCString cstring),(PtrType (integral TyChar) noTypeQuals noAttributes,[]),ni)
+	expr2ast (CMember expr ident is_ptr ni) = Member (expr2ast expr) (cident2ident ident) is_ptr Nothing (ni2loc ni)
+	expr2ast (CVar ident ni) = Var (cident2ident ident) Nothing (ni2loc ni)
+	expr2ast (CCall fun args ni) = Call (expr2ast fun) (map expr2ast args) Nothing (ni2loc ni)
+	expr2ast other = error $ "expr2ast " ++ show other ++ " not implemented"
+
+	intType = Just (integral TyInt,[]) :: TypeAttrs
+-}
+
+{-
 	getCDeclType :: CDecl -> Type
 	getCDeclType cdecl = case runTrav_ (withDefTable (const ((),deftable)) >> analyseTypeDecl cdecl) of
 		Left errs    → error $ show errs
@@ -128,29 +289,6 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 				Just initializer → [ Var ident Nothing (ni2loc ni) ≔ initializer2expr tyattrs initializer ]
 			in
 			AST.Decl (VarDeclaration ident (renderpretty ty) tyattrs (ni2loc ni)) (ni2loc ni) : init_assign
-
-	decl2vardecl :: (Declaration d) => NodeInfo → d → VarDeclaration TypeAttrs
-	decl2vardecl ni decl = VarDeclaration (cident2ident ident) (renderpretty ty) (Just (ty,attrs)) (ni2loc ni)
-		where
-		VarDecl (VarName ident Nothing) (DeclAttrs _ _ attrs) ty = getVarDecl decl
-
-	identdecl2extdecl :: IdentDecl → ExtDecl TypeAttrs
-	identdecl2extdecl identdecl = ExtDecl vardeclast body loc
-		where
-		vardeclast = decl2vardecl ni identdecl
-		ni = nodeInfo identdecl
-		loc = ni2loc ni
-		body = case identdecl of
-			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType _ paramdecls _) _)) stmt ni) →
-				Right $ AST.FunDef (map (decl2vardecl ni) paramdecls) (stmt2ast stmt)
-			SemRep.Declaration (SemRep.Decl vardecl _) → Left Nothing
-			EnumeratorDef (Enumerator _ expr _ _)      → Left $ Just $ expr2ast expr
-			ObjectDef (ObjDef vardecl mb_init _)       → Left $ fmap (initializer2expr (typeVD vardeclast)) mb_init
-
-	initializer2expr :: TypeAttrs → CInitializer NodeInfo → Expr TypeAttrs
-	initializer2expr _       (CInitExpr expr _)      = expr2ast expr
-	initializer2expr tyattrs (CInitList initlist ni) = Comp idexprs tyattrs (ni2loc ni) where
-		idexprs = for initlist $ \ ([],initializer) → initializer2expr tyattrs initializer
 
 	mb_compound_stmts :: [Stmt TypeAttrs] → Stmt TypeAttrs
 	mb_compound_stmts [stmt] = stmt
@@ -309,9 +447,6 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 
 		other → error $ "ty2zty " ++ show other ++ " not implemented!"
 
-	eval_const_expr :: CExpr -> Integer
-	eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
-
 	infer_vardecl :: VarDeclaration TypeAttrs → VarDeclaration ZType
 	infer_vardecl VarDeclaration{..} = VarDeclaration identVD sourceTypeVD (ty2zty tyattrs) locVD where
 		Just tyattrs = typeVD
@@ -466,3 +601,4 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} = (translunit_typeattrs,t
 			Break loc → Break loc
 
 			other → error $ "infer_stmt " ++ show other ++ " not implemented"
+-}

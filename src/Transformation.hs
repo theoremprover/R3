@@ -16,13 +16,6 @@ import AST
 import R3Monad
 import Prettyprinter
 
-type AST               = TranslUnit ZType
-type ExtDeclAST        = ExtDecl ZType
-type ExprAST           = Expr ZType
-type StmtAST           = Stmt ZType
-type VarDeclarationAST = VarDeclaration ZType
-type FunDefAST         = FunDef ZType
-
 {-
 	AST transformations:
 
@@ -82,19 +75,20 @@ int** pp = &p;
 			Just inc_expr → ExprStmt (expr2ast inc_expr) (ni2loc inc_expr)
 -}
 
-transformAST :: AST → R3 AST
-transformAST ast = elimConstructs ast >>= elimSideEffects
+transformAST :: TranslUnit → R3 TranslUnit
+transformAST ast = return ast --elimConstructs ast >>= elimSideEffects
 
 newIdent :: String -> R3 Ident
 newIdent prefix = do
 	i <- getNewNameCnt 
 	return $ Ident (prefix ++ "$" ++ show i) i introLoc
 
-elimConstructs :: AST → R3 AST
+{-
+elimConstructs :: TranslUnit → R3 TranslUnit
 elimConstructs ast = transformBiM rules ast
 	where
 
-  	rules :: StmtAST -> R3 StmtAST
+  	rules :: Stmt -> R3 Stmt
 
   	-- The body compound under While catches break by default,
   	-- and also breaks the "Compound True [body ..." compound, because it is the last compound in the whole compound
@@ -148,7 +142,7 @@ else
 
 		where
 
-		switchbody switchvar (Case val body loc : stmts) =
+		switchbody switchvar (Case val loc : stmts) =
 			𝗂𝖿 (val ≟ switchvar)
 				(Compound False (till_break (body:stmts)) introLoc)
 				(switchbody switchvar (skip_till_case stmts))
@@ -164,7 +158,7 @@ else
 
 	rules other = return other
 
-elimSideEffects :: AST → R3 AST
+elimSideEffects :: TranslUnit → R3 TranslUnit
 elimSideEffects ast = do
 	liftIO $ mapM_ print [ show loc ++ " : " ++ show (pretty stm) |
 		Compound _ stmts _ <- universeBi ast,
@@ -172,6 +166,7 @@ elimSideEffects ast = do
 		Unary op _ _ _ :: Expr ZType <- children expr ]
 --		op `elem` [PreInc,PostInc,PreDec,PostDec] ]
 	return ast
+-}
 
 {-
 asta = C [ExpStm (V 1), C [ExpStm (I (V 9)),ExpStm (V 3)]]

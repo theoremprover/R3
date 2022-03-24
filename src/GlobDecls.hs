@@ -38,7 +38,7 @@ globdeclsToHTMLString (GlobalDecls objs tags typedefs) = renderHtml $ docTypeHtm
 		h2 "Typedefs"
 		showMapTable (render.pretty) (\ (TypeDef _ ty _ _) -> (render.pretty) ty) typedefs
 
-astToHTMLString :: (Show a) => TranslUnit a -> String
+astToHTMLString :: TranslUnit -> String
 astToHTMLString ast = renderHtml $ docTypeHtml $ do
 	H.head $ do
 		title "AST"

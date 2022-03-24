@@ -1,4 +1,6 @@
-int f(int x,int y)
+typedef int fi;
+
+fi f(fi x,fi y)
 {
     int a = 0;
     switch(x)

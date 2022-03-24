@@ -26,24 +26,23 @@ main = do
 		Nothing  → exitWith $ ExitFailure 1
 		Just ast → exitWith ExitSuccess
 
-main1 :: IO (Maybe (ExtDecl ZType))
+main1 :: IO (Maybe ExtDecl)
 main1 = do
 	let compiler = "gcc"
 	machinespec <- getMachineSpec compiler
 	evalStateT mainR3 (R3State compiler machinespec 1)
 
-mainR3 :: R3 (Maybe (ExtDecl ZType))
+mainR3 :: R3 (Maybe ExtDecl)
 mainR3 = do
 --	liftIO $ writeFile ("test.html") $ genericToHTMLString testG
 	parseFile file_name >>= \case
 		Left errmsg → do
 			liftIO $ putStrLn errmsg
 			return Nothing
-		Right (typeattrs_ast,typed_ast) → do
-			liftIO $ writeFile "translunit.TypeAttrs" $ prettyTranslUnitString typeattrs_ast
-			liftIO $ writeFile "translunit.ZType" $ prettyTranslUnitString typed_ast
-			ast <- transformAST typed_ast
-			liftIO $ writeFile "transformed.ZType" $ prettyTranslUnitString ast
+		Right ast → do
+			liftIO $ writeFile "translunit.txt" $ prettyTranslUnitString ast
+			ast <- transformAST ast
+			liftIO $ writeFile "transformed.txt" $ prettyTranslUnitString ast
 			let fun_body = lookupExtDef function_name ast
 			liftIO $ writeFile (function_name <.> "html") $ genericToHTMLString fun_body
 			return $ Just fun_body
