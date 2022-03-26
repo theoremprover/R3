@@ -93,8 +93,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 	global_tyenv :: TyEnv
 	global_tyenv = for (ASTMap.assocs gObjs) $ \ (ident,decl) → ( cident2ident ident, decl2zty decl )
 
-	decl2zty decl = ty2zty (declType decl,attrs)
-		where
+	decl2zty decl = ty2zty (declType decl,attrs) where
 		DeclAttrs _ _ attrs = declAttrs decl
 
 	ni2loc :: (CNode n) => n → Loc
@@ -177,20 +176,42 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 		eval_const_expr :: CExpr -> Integer
 		eval_const_expr (CConst (CIntConst cinteger _)) = getCInteger cinteger
 
-	identdecl2extdecl :: IdentDecl → ExtDecl
-	identdecl2extdecl identdecl = ExtDecl (decl2vardecl identdecl) (Left Nothing) (ni2loc identdecl)
-
 	decl2vardecl :: (CNode d,Declaration d) => d → VarDeclaration
 	decl2vardecl decl = VarDeclaration (cident2ident $ identOfVarName varname) (renderpretty ty) zty (ni2loc decl)
 		where
 		VarDecl varname _ ty = getVarDecl decl
 		zty = decl2zty decl
 
+	identdecl2extdecl :: IdentDecl → ExtDecl
+	identdecl2extdecl identdecl = ExtDecl vardecl body (ni2loc identdecl)
+		where
+		vardecl@VarDeclaration{..} = decl2vardecl identdecl
+		body = case identdecl of
+			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType _ paramdecls _) _)) stmt ni) →
+				Right $ AST.FunDef (map decl2vardecl paramdecls) (stmt2ast global_tyenv stmt)
+			SemRep.Declaration _                  → Left Nothing
+			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast global_tyenv (Just typeVD) expr
+			ObjectDef (ObjDef _ mb_init _)        → Left $ fmap (initializer2expr global_tyenv typeVD) mb_init
+
+	initializer2expr :: TyEnv → ZType → CInitializer NodeInfo → Expr
+	initializer2expr tyenv ty (CInitExpr cexpr _)     = expr2ast tyenv (Just ty) cexpr
+	initializer2expr tyenv ty cinitlist@(CInitList initlist ni) = Comp idexprs ty (ni2loc ni)
+		where
+		tylist = case ty of
+			ZArray elem_ty _            → repeat elem_ty
+			ZCompound _ _ comp_vardecls → map typeVD comp_vardecls
+		inits = case length initlist == length tylist of
+			False → error $ "initializer2expr: length initlist /= length tylist at " ++ show ni
+			True  → zip initlist tylist
+		idexprs = for inits $ \ (([],cinitializer),ty) → initializer2expr tyenv ty cinitializer
+
+	expr2ast :: TyEnv → Maybe ZType → CExpr → Expr
+	expr2ast tyenv mb_ty expr = error ""
+
+	stmt2ast :: TyEnv → CStat → Stmt
+	stmt2ast tyenv cstat = error ""
+
 {-
-	initializer2expr :: TypeAttrs → CInitializer NodeInfo → Expr TypeAttrs
-	initializer2expr _       (CInitExpr expr _)      = expr2ast expr
-	initializer2expr tyattrs (CInitList initlist ni) = Comp idexprs tyattrs (ni2loc ni) where
-		idexprs = for initlist $ \ ([],initializer) → initializer2expr tyattrs initializer
 
 	identdecl2extdecl :: IdentDecl → ExtDecl TypeAttrs
 	identdecl2extdecl identdecl = ExtDecl (decl2vardecl ni identdecl) body (ni2loc ni)
