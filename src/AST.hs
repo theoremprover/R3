@@ -196,21 +196,21 @@ instance Pretty Const where
 
 data Stmt =
 	Decl       { vardeclS  :: VarDeclaration,   locS      :: Loc } |
-	Label      { identS    :: Ident,              stmtS     :: Stmt,   locS      :: Loc } |
-	Compound   { catchBrkS :: Bool,               stmtsS    :: [Stmt], locS      :: Loc } |
-	IfThenElse { condS     :: Expr,             thenstmtS :: Stmt, elsestmtS :: Stmt, locS :: Loc } |
+	Label      { identS    :: Ident,            locS      :: Loc } |
+	Compound   { catchBrkS :: Bool,             stmtsS    :: [Stmt], locS      :: Loc } |
+	IfThenElse { condS     :: Expr,             thenstmtS :: Stmt,   elsestmtS :: Stmt, locS :: Loc } |
 	ExprStmt   { exprS     :: Expr,             locS      :: Loc } |
-	While      { condS     :: Expr,             bodyS     :: Stmt, locS      :: Loc } |
-	DoWhile    { condS     :: Expr,             bodyS     :: Stmt, locS      :: Loc } |
-	For        { condS     :: Expr,             incS      :: Stmt, bodyS   :: Stmt, locS      :: Loc } |
-	Switch     { condS     :: Expr,             bodyS     :: Stmt, locS      :: Loc } |
+	While      { condS     :: Expr,             bodyS     :: Stmt,   locS      :: Loc } |
+	DoWhile    { condS     :: Expr,             bodyS     :: Stmt,   locS      :: Loc } |
+	For        { condS     :: Expr,             incS      :: Stmt,   bodyS   :: Stmt,   locS :: Loc } |
+	Switch     { condS     :: Expr,             bodyS     :: Stmt,   locS      :: Loc } |
 	Case       { condS     :: Expr,             locS      :: Loc } |
-	Cases      { loCondS   :: Expr,             hiCondS   :: Expr, locS      :: Loc } |
+	Cases      { loCondS   :: Expr,             hiCondS   :: Expr,   locS      :: Loc } |
 	Return     { mbexprS   :: Maybe (Expr),     locS      :: Loc } |
 	Continue   { locS      :: Loc } |
 	Default    { locS      :: Loc } |
 	Break      { locS      :: Loc } |
-	Goto       { identS    :: Ident,              locS      :: Loc }
+	Goto       { identS    :: Ident,            locS      :: Loc }
 	deriving (Show,Generic,Data,Typeable)
 instance Pretty Stmt where
 	pretty (Compound breaks stmts _) = vcat [ nest 4 $ vcat $
@@ -239,7 +239,7 @@ instance Pretty Stmt where
 	pretty stmt = stmt_doc <+> locComment (locS stmt) where
 		stmt_doc = case stmt of
 			Decl vardecl _     → pretty vardecl <> semi
-			Label ident stmt _ → vcat [ pretty ident <> colon, pretty stmt ]
+			Label ident _      → pretty ident <> colon
 			ExprStmt expr _    → pretty expr <> semi
 			Return mb_expr _   → pretty "return" <> parens (maybe emptyDoc pretty mb_expr) <> semi
 			Continue _         → pretty "continue" <> semi

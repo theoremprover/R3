@@ -90,8 +90,8 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 
 	where
 
-	global_tyenv :: TyEnv
-	global_tyenv = for (ASTMap.assocs gObjs) $ \ (ident,decl) → ( cident2ident ident, decl2zty decl )
+	global_γ :: TyEnv
+	global_γ = for (ASTMap.assocs gObjs) $ \ (ident,decl) → ( cident2ident ident, decl2zty decl )
 
 	decl2zty decl = ty2zty (declType decl,attrs) where
 		DeclAttrs _ _ attrs = declAttrs decl
@@ -188,14 +188,14 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 		vardecl@VarDeclaration{..} = decl2vardecl identdecl
 		body = case identdecl of
 			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType _ paramdecls _) _)) stmt ni) →
-				Right $ AST.FunDef (map decl2vardecl paramdecls) (stmt2ast global_tyenv stmt)
+				Right $ AST.FunDef (map decl2vardecl paramdecls) (stmt2ast global_γ stmt)
 			SemRep.Declaration _                  → Left Nothing
-			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast global_tyenv (Just typeVD) expr
-			ObjectDef (ObjDef _ mb_init _)        → Left $ fmap (initializer2expr global_tyenv typeVD) mb_init
+			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast global_γ (Just typeVD) expr
+			ObjectDef (ObjDef _ mb_init _)        → Left $ fmap (initializer2expr global_γ typeVD) mb_init
 
 	initializer2expr :: TyEnv → ZType → CInitializer NodeInfo → Expr
-	initializer2expr tyenv ty (CInitExpr cexpr _)     = expr2ast tyenv (Just ty) cexpr
-	initializer2expr tyenv ty cinitlist@(CInitList initlist ni) = Comp idexprs ty (ni2loc ni)
+	initializer2expr γ ty (CInitExpr cexpr _)     = expr2ast γ (Just ty) cexpr
+	initializer2expr γ ty cinitlist@(CInitList initlist ni) = Comp idexprs ty (ni2loc ni)
 		where
 		tylist = case ty of
 			ZArray elem_ty _            → repeat elem_ty
@@ -203,13 +203,88 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 		inits = case length initlist == length tylist of
 			False → error $ "initializer2expr: length initlist /= length tylist at " ++ show ni
 			True  → zip initlist tylist
-		idexprs = for inits $ \ (([],cinitializer),ty) → initializer2expr tyenv ty cinitializer
+		idexprs = for inits $ \ (([],cinitializer),ty) → initializer2expr γ ty cinitializer
+
+-- αβγδεζηθικλμνξοπρςστυφχψω
+
+	stmt2ast :: TyEnv → CStat → Stmt
+	stmt2ast γ cstat = case cstat of
+		CCompound _ cbis _    → Compound False (cbis2ast γ cbis) loc
+{-
+		CLabel ident stmt _ _ → Label (cident2ident ident) (stmt2ast stmt) loc
+		CIf expr then_stmt mb_else_stmt _ → 
+		IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt loc
+			where
+			else_stmt = case mb_else_stmt of
+				Nothing     → emptyStmt
+				Just e_stmt → stmt2ast e_stmt
+		CExpr mb_expr _ → case mb_expr of
+		Just expr → ExprStmt (expr2ast expr) loc
+		Nothing   → emptyStmt
+		CWhile cond body is_dowhile ni →
+			(if is_dowhile then DoWhile else While) (expr2ast cond) (mb_break_compound body) loc
+		CFor mb_expr_or_decl (Just cond) mb_inc body ni → 
+		Compound False (inis ++ [ For (expr2ast cond) incs (mb_break_compound body) loc ]) introLoc
+			where
+			inis = case mb_expr_or_decl of
+				Left (Just ini_expr) → [ ExprStmt (expr2ast ini_expr) (ni2loc ini_expr) ]
+				Right cdecl          → decl2stmt cdecl
+			incs = case mb_inc of
+				Nothing       → emptyStmt
+				Just inc_expr → ExprStmt (expr2ast inc_expr) (ni2loc inc_expr)
+		CGoto cident ni →  Goto (cident2ident cident) loc
+		CCont ni → Continue loc
+		CBreak ni → Break loc
+		CDefault stmt _ → Default loc
+		CReturn mb_expr _ → Return (fmap expr2ast mb_expr) loc
+		CSwitch expr body _ → Switch (expr2ast expr) (mb_break_compound body) loc
+		CCase expr stmt _ → Case (expr2ast expr) (stmt2ast stmt) loc
+-}
+		other → error $ "stmt2ast " ++ show other ++ " not implemented"
+
+		where
+
+		loc = ni2loc cstat
+{-
+		mb_compound_stmts :: [Stmt] → Stmt
+		mb_compound_stmts [stmt] = stmt
+		mb_compound_stmts stmts = Compound False stmts introLoc
+
+		-- makes a compound breakable
+		mb_break_compound (CCompound _ cbis ni) = Compound True (cbis2ast cbis) (ni2loc ni)
+		mb_break_compound other = stmt2ast other
+-}
+
+		cbis2ast :: TyEnv → [CBlockItem] → [Stmt]
+		cbis2ast γ (CBlockStmt stmt : cbis)  = stmt2ast γ stmt : cbis2ast γ cbis
+		cbis2ast γ (CBlockDecl cdecl : cbis) = declstmts ++ cbis2ast γ' cbis where
+			(γ',declstmts) = cdecl2stmts γ cdecl
+
+		cdecl2stmts :: TyEnv → CDecl -> (TyEnv,[Stmt])
+		cdecl2stmts γ (CDecl declspecs triples ni) = triples2stmts γ [] triples
+			where
+			triples2stmts γ acc [] = (γ,acc)
+			triples2stmts γ acc ((Just cdeclr@(CDeclr (Just cident) _ _ _ ni),mb_init,mb_size):triples) =
+				triples2stmts γ' (acc ++ stmts) triples
+				where
+				ident = cident2ident cident
+				ty = getCDeclType $ CDecl declspecs [(Just cdeclr,mb_init,mb_size)] ni
+				zty = ty2zty (ty,[])
+				γ' = (ident,zty) : γ
+				stmts = AST.Decl (VarDeclaration ident (renderpretty ty) zty (ni2loc ni)) (ni2loc ni) : case mb_init of
+					Nothing          → []
+					Just initializer → [ Var ident zty (ni2loc ni) ≔ initializer2expr γ zty initializer ]
+
+		getCDeclType :: CDecl -> Type
+		getCDeclType cdecl = case runTrav_ (withDefTable (const ((),deftable)) >> analyseTypeDecl cdecl) of
+			Left errs    → error $ show errs
+			Right (ty,_) → ty
+
+	stmt2ast γ other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
 	expr2ast :: TyEnv → Maybe ZType → CExpr → Expr
 	expr2ast tyenv mb_ty expr = error ""
 
-	stmt2ast :: TyEnv → CStat → Stmt
-	stmt2ast tyenv cstat = error ""
 
 {-
 
