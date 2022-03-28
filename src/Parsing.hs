@@ -104,6 +104,9 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 	cident2ident :: CIdent.Ident → Ident
 	cident2ident (CIdent.Ident name i ni) = Ident name i (ni2loc ni)
 
+	intTy :: ZType
+	intTy = ZInt intSize False
+
 	ty2zty :: (Type,Attributes) → ZType
 	ty2zty (ty,attrs) = case ty of
 		DirectType tyname _ tyattrs → case tyname of
@@ -188,7 +191,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 		vardecl@VarDeclaration{..} = decl2vardecl identdecl
 		body = case identdecl of
 			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType rty paramdecls _) _)) stmt ni) →
-				Right $ AST.FunDef (map decl2vardecl paramdecls) (mb_compound_stmts $ stmt2ast global_γ (ty2zty rty) stmt)
+				Right $ AST.FunDef (map decl2vardecl paramdecls) (mb_compound_stmts $ stmt2ast global_γ (ty2zty (rty,[])) stmt)
 			SemRep.Declaration _                  → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast global_γ (Just typeVD) expr
 			ObjectDef (ObjDef _ mb_init _)        → Left $ fmap (initializer2expr global_γ typeVD) mb_init
@@ -211,6 +214,11 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 
 -- αβγδεζηθικλμνξοπρςστυφχψω
 
+	getCDeclType :: CDecl -> Type
+	getCDeclType cdecl = case runTrav_ (withDefTable (const ((),deftable)) >> analyseTypeDecl cdecl) of
+		Left errs    → error $ show errs
+		Right (ty,_) → ty
+
 	emptyStmt :: Stmt
 	emptyStmt = Compound False [] introLoc
 
@@ -222,7 +230,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 		CLabel ident stmt _ _ → Label (cident2ident ident) loc : stmt2ast γ ret_ty stmt
 
 		CIf expr then_stmt mb_else_stmt _ →
-			[ IfThenElse (expr2ast expr) (mb_compound_stmts $ stmt2ast γ ret_ty then_stmt) else_stmt loc ]
+			[ IfThenElse (expr2ast γ (Just intTy) expr) (mb_compound_stmts $ stmt2ast γ ret_ty then_stmt) else_stmt loc ]
 			where
 			else_stmt = case mb_else_stmt of
 				Nothing     → emptyStmt
@@ -233,10 +241,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 			Nothing   → []
 
 		CWhile cond body is_dowhile ni → [ (if is_dowhile then DoWhile else While)
-			(expr2ast γ cond) (mb_break_compound $ stmt2ast γ body) loc ]
+			(expr2ast γ (Just intTy) cond) (mb_break_compound $ stmt2ast γ ret_ty body) loc ]
 
 		CFor mb_expr_or_decl (Just cond) mb_inc body ni →
-			inis ++ [ For (expr2ast γ' (Just ZBool) cond) inc (mb_break_compound $ stmt2ast γ' ret_ty body) loc ]
+			[ mb_compound_stmts $ inis ++ [ For (expr2ast γ' (Just intTy) cond) inc (mb_break_compound $ stmt2ast γ' ret_ty body) loc ] ]
 			where
 			(γ',inis) = case mb_expr_or_decl of
 				Left (Just ini_expr) → ( γ, [ ExprStmt (expr2ast γ Nothing ini_expr) (ni2loc ini_expr) ] )
@@ -245,19 +253,19 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 				Nothing       → emptyStmt
 				Just inc_expr → ExprStmt (expr2ast γ' Nothing inc_expr) (ni2loc inc_expr)
 
-		CGoto cident ni →  Goto (cident2ident cident) loc
+		CGoto cident ni → [ Goto (cident2ident cident) loc ]
 
-		CCont _ → Continue loc
+		CCont _ → [ Continue loc ]
 
-		CBreak _ → Break loc
+		CBreak _ → [ Break loc ]
 
-		CDefault cstmt _ → Default loc : stmt2ast γ cstmt
+		CDefault cstmt _ → Default loc : stmt2ast γ ret_ty cstmt
 
-		CReturn mb_expr _ → Return $ fmap (expr2ast γ (Just ret_ty) mb_expr) loc
+		CReturn mb_expr _ → [ Return (fmap (expr2ast γ (Just ret_ty)) mb_expr) loc ]
 
-		CSwitch expr body _ → Switch (expr2ast γ expr) (mb_break_compound $ stmt2ast γ ret_ty body) loc
+		CSwitch expr body _ → [ Switch (expr2ast γ Nothing expr) (mb_break_compound $ stmt2ast γ ret_ty body) loc ]
 
-		CCase expr stmt _ → Case (expr2ast γ expr) loc : stmt2ast γ ret_ty stmt
+		CCase expr stmt _ → Case (expr2ast γ Nothing expr) loc : stmt2ast γ ret_ty stmt
 
 		other → error $ "stmt2ast " ++ show other ++ " not implemented"
 
@@ -271,7 +279,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 		mb_break_compound stmts = Compound True stmts introLoc
 
 		cbis2ast :: TyEnv → [CBlockItem] → [Stmt]
-		cbis2ast γ (CBlockStmt stmt : cbis)  = stmt2ast γ ret_ty stmt : cbis2ast γ cbis
+		cbis2ast γ (CBlockStmt stmt : cbis)  = stmt2ast γ ret_ty stmt ++ cbis2ast γ cbis
 		cbis2ast γ (CBlockDecl cdecl : cbis) = declstmts ++ cbis2ast γ' cbis where
 			(γ',declstmts) = cdecl2stmts γ cdecl
 
@@ -290,16 +298,94 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 					Nothing          → []
 					Just initializer → [ Var ident zty (ni2loc ni) ≔ initializer2expr γ zty initializer ]
 
-		getCDeclType :: CDecl -> Type
-		getCDeclType cdecl = case runTrav_ (withDefTable (const ((),deftable)) >> analyseTypeDecl cdecl) of
-			Left errs    → error $ show errs
-			Right (ty,_) → ty
-
 	stmt2ast _ _ other = error $ "stmt2ast " ++ show other ++ " not implemented"
 
 	expr2ast :: TyEnv → Maybe ZType → CExpr → Expr
-	expr2ast tyenv mb_ty expr = error ""
+	expr2ast γ mb_target_ty cexpr = case mb_target_ty of
+		Nothing        → expr
+		Just target_ty → mb_cast target_ty expr
 
+		where
+
+		loc = ni2loc cexpr
+
+--		τ      = expr2ast γ Nothing
+--		τ_e ty = expr2ast γ (Just ty)
+--		τ_r    = expr2ast γ mb_target_ty
+
+		mb_cast :: ZType -> Expr -> Expr
+		mb_cast target_ty expr | target_ty /= typeE expr = Cast expr target_ty introLoc
+		mb_cast _ expr = expr
+
+		expr = case cexpr of
+
+			CAssign ass_op lexpr rexpr _ → Assign lexpr' rexpr' (typeE lexpr') loc
+				where
+				lexpr' = expr2ast γ Nothing lexpr
+				rexpr' = expr2ast γ (Just $ typeE lexpr') rexpr
+				expr'  = case ass_op of
+					CAssignOp → rexpr'
+					other_op  → Binary binop lexpr' rexpr' (typeE lexpr') introLoc where
+						Just binop = lookup ass_op [
+							(CMulAssOp,Mul),(CDivAssOp,Div),(CRmdAssOp,Rmd),(CAddAssOp,Add),(CSubAssOp,Sub),
+							(CShlAssOp,Shl),(CShrAssOp,Shr),(CAndAssOp,BitAnd),(CXorAssOp,BitXOr),(COrAssOp,BitOr) ]
+
+			CCond cond (Just then_expr) else_expr _ →
+				CondExpr (expr2ast γ (Just intTy) cond) (mb_cast max_ty then_expr') (mb_cast max_ty else_expr') max_ty loc
+				where
+				cond'      = expr2ast γ (Just intTy) cond
+				then_expr' = expr2ast γ Nothing then_expr
+				else_expr' = expr2ast γ Nothing else_expr
+				max_ty     = max (typeE then_expr') (typeE else_expr')
+
+			CCast cdecl expr _ → expr2ast γ (Just $ getCDeclType cdecl) expr
+
+			CBinary cbinop expr1 expr2 _ → Binary binop (mb_cast arg_ty expr1') (mb_cast arg_ty expr2') res_ty
+				where
+				Just binop = lookup cbinop [
+					(CMulOp,Mul),(CDivOp,Div),(CRmdOp,Rmd),(CAddOp,Add),(CSubOp,Sub),(CShlOp,Shl),
+					(CShrOp,Shr),(CLeOp,LessEq),(CGrOp,Greater),(CLeqOp,LessEq),(CGeqOp,GreaterEq),(CEqOp,Equals),(CNeqOp,NotEquals),
+					(CAndOp,BitAnd),(CXorOp,BitXOr),(COrOp,BitOr),(CLndOp,And),(CLorOp,Or) ]
+				expr1' = expr2ast γ Nothing expr1
+				expr2' = expr2ast γ Nothing expr2
+				max_ty = max (typeE expr1') (typeE expr2')
+				(res_ty,arg_ty) = case op of
+					op | op `elem` [Mul,Div,Add,Sub,Rmd,Shl,Shr,BitAnd,BitOr,BitXOr] → (max_ty,max_ty)
+					op | op `elem` [Less,Equals,NotEquals,LessEq,Greater,GreaterEq]  → (intTy, max_ty)
+					op | op `elem` [And,Or]                                          → (intTy, intTy )
+					other -> error $ "infer_expr " ++ show other ++ " not implemented"
+
+			CUnary cunop expr _ → Unary unop expr' ty loc
+				where
+				Just unop = lookup cunop [
+					(CPreIncOp,PreInc),(CPreDecOp,PreDec),(CPostIncOp,PostInc),(CPostDecOp,PostDec),(CAdrOp,AddrOf),
+					(CIndOp,Deref),(CPlusOp,Plus),(CMinOp,Minus),(CCompOp,BitNeg),(CNegOp,Not) ]
+				expr'     = expr2ast γ Nothing expr
+				expr'_ty  = typeE expr'
+				ty        = case unop of
+					AddrOf → ZPtr expr'_ty
+					Deref  → targettyZ expr'_ty
+					Not    → intTy
+					op | op `elem` [Plus,Minus,BitNeg,PreInc,PostInc,PreDec,PostDec]
+					       → expr'_ty
+
+------
+			CIndex arr index ni → CIndex arr index niIndex (expr2ast arr) (expr2ast index) Nothing (ni2loc ni)
+
+			CConst ctconst → CConst ctconstConstant const' (Just ty) (ni2loc ni) where
+				(const',ty,ni) = case ctconst of
+					CIntConst cinteger@(CInteger _ _ flags) ni → (IntConst (getCInteger cinteger),(integral $ getIntType flags,[]),ni)
+					CCharConst cchar ni       → (CharConst (read $ getCChar cchar),(integral TyChar,[]),ni)
+					CFloatConst (CFloat f) ni → (FloatConst (read f),(floating $ getFloatType f,[]),ni)
+					CStrConst cstring ni      → (StringConst $ (getCString cstring),(PtrType (integral TyChar) noTypeQuals noAttributes,[]),ni)
+
+			CMember expr ident is_ptr ni → CMember expr ident is_ptr niMember (expr2ast expr) (cident2ident ident) is_ptr Nothing (ni2loc ni)
+
+			CVar ident ni → CVar ident niVar (cident2ident ident) Nothing (ni2loc ni)
+
+			CCall fun args ni → CCall fun args niCall (expr2ast fun) (map expr2ast args) Nothing (ni2loc ni)
+
+			other → error $ "expr2ast " ++ show other ++ " not implemented"
 {-
 
 	identdecl2extdecl :: IdentDecl → ExtDecl TypeAttrs
@@ -579,9 +665,6 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 				vardecls' = map infer_vardecl vardecls
 				arg_env   = map vardecl2envitem vardecls'
 				[body']   = infer_stmt [arg_env,global_tyenv] [body]
-	mb_cast :: ZType -> Expr ZType -> Expr ZType
-	mb_cast target_ty expr | target_ty /= typeE expr = Cast expr target_ty (NoLoc "<inserted>")
-	mb_cast _ expr = expr
 
 	lookupVarDeclsTy :: Ident → [VarDeclaration a] → a
 	lookupVarDeclsTy ident vardecls = typeVD $ head $ filter ((==ident).identVD) vardecls
