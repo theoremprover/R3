@@ -188,7 +188,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 		vardecl@VarDeclaration{..} = decl2vardecl identdecl
 		body = case identdecl of
 			FunctionDef (SemRep.FunDef (VarDecl _ _ (FunctionType (FunType _ paramdecls _) _)) stmt ni) →
-				Right $ AST.FunDef (map decl2vardecl paramdecls) (stmt2ast global_γ stmt)
+				Right $ AST.FunDef (map decl2vardecl paramdecls) (mb_compound_stmts $ stmt2ast global_γ stmt)
 			SemRep.Declaration _                  → Left Nothing
 			EnumeratorDef (Enumerator _ expr _ _) → Left $ Just $ expr2ast global_γ (Just typeVD) expr
 			ObjectDef (ObjDef _ mb_init _)        → Left $ fmap (initializer2expr global_γ typeVD) mb_init
@@ -205,33 +205,46 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 			True  → zip initlist tylist
 		idexprs = for inits $ \ (([],cinitializer),ty) → initializer2expr γ ty cinitializer
 
+	mb_compound_stmts :: [Stmt] → Stmt
+	mb_compound_stmts [stmt] = stmt
+	mb_compound_stmts stmts = Compound False stmts introLoc
+
 -- αβγδεζηθικλμνξοπρςστυφχψω
 
-	stmt2ast :: TyEnv → CStat → Stmt
+--	emptyStmt :: Stmt
+--	emptyStmt = Compound False [] introLoc
+
+	stmt2ast :: TyEnv → CStat → [Stmt]
 	stmt2ast γ cstat = case cstat of
-		CCompound _ cbis _    → Compound False (cbis2ast γ cbis) loc
-{-
-		CLabel ident stmt _ _ → Label (cident2ident ident) (stmt2ast stmt) loc
-		CIf expr then_stmt mb_else_stmt _ → 
-		IfThenElse (expr2ast expr) (stmt2ast then_stmt) else_stmt loc
+
+		CCompound _ cbis _    → [ Compound False (cbis2ast γ cbis) loc ]
+
+		CLabel ident stmt _ _ → Label (cident2ident ident) loc : stmt2ast γ stmt
+
+		CIf expr then_stmt mb_else_stmt _ →
+			[ IfThenElse (expr2ast expr) (mb_compound_stmts $ stmt2ast γ then_stmt) else_stmt) loc ]
 			where
 			else_stmt = case mb_else_stmt of
 				Nothing     → emptyStmt
-				Just e_stmt → stmt2ast e_stmt
+				Just e_stmt → stmt2ast γ e_stmt
+
 		CExpr mb_expr _ → case mb_expr of
-		Just expr → ExprStmt (expr2ast expr) loc
-		Nothing   → emptyStmt
-		CWhile cond body is_dowhile ni →
-			(if is_dowhile then DoWhile else While) (expr2ast cond) (mb_break_compound body) loc
-		CFor mb_expr_or_decl (Just cond) mb_inc body ni → 
-		Compound False (inis ++ [ For (expr2ast cond) incs (mb_break_compound body) loc ]) introLoc
+			Just expr → [ ExprStmt (expr2ast γ Nothing expr) loc ]
+			Nothing   → []
+
+		CWhile cond body is_dowhile ni → (if is_dowhile then DoWhile else While)
+			(expr2ast γ cond) (mb_break_compound $ stmt2ast γ body) loc
+
+		CFor mb_expr_or_decl (Just cond) mb_inc body ni →
+			inis ++ [ For (expr2ast γ cond) incs (mb_break_compound $ stmt2ast γ body) loc ]
 			where
 			inis = case mb_expr_or_decl of
 				Left (Just ini_expr) → [ ExprStmt (expr2ast ini_expr) (ni2loc ini_expr) ]
 				Right cdecl          → decl2stmt cdecl
 			incs = case mb_inc of
-				Nothing       → emptyStmt
-				Just inc_expr → ExprStmt (expr2ast inc_expr) (ni2loc inc_expr)
+				Nothing       → []
+				Just inc_expr → [ ExprStmt (expr2ast inc_expr) (ni2loc inc_expr) ]
+
 		CGoto cident ni →  Goto (cident2ident cident) loc
 		CCont ni → Continue loc
 		CBreak ni → Break loc
@@ -239,17 +252,14 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 		CReturn mb_expr _ → Return (fmap expr2ast mb_expr) loc
 		CSwitch expr body _ → Switch (expr2ast expr) (mb_break_compound body) loc
 		CCase expr stmt _ → Case (expr2ast expr) (stmt2ast stmt) loc
--}
+
 		other → error $ "stmt2ast " ++ show other ++ " not implemented"
 
 		where
 
 		loc = ni2loc cstat
-{-
-		mb_compound_stmts :: [Stmt] → Stmt
-		mb_compound_stmts [stmt] = stmt
-		mb_compound_stmts stmts = Compound False stmts introLoc
 
+{-
 		-- makes a compound breakable
 		mb_break_compound (CCompound _ cbis ni) = Compound True (cbis2ast cbis) (ni2loc ni)
 		mb_break_compound other = stmt2ast other
@@ -285,6 +295,9 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 	expr2ast :: TyEnv → Maybe ZType → CExpr → Expr
 	expr2ast tyenv mb_ty expr = error ""
 
+
+	identdecl2extdecl :: IdentDecl → ExtDecl
+	identdecl2extdecl identdecl = ExtDecl (decl2vardecl identdecl) (Left Nothing) (ni2loc identdecl)
 
 {-
 
