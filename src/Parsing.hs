@@ -104,8 +104,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 	cident2ident :: CIdent.Ident → Ident
 	cident2ident (CIdent.Ident name i ni) = Ident name i (ni2loc ni)
 
-	intTy :: ZType
-	intTy = ZInt intSize False
+	cboolTy :: ZType
+	cboolTy = ZInt intSize False
+	indexTy :: ZType
+	indexTy = ZInt intSize True
 
 	ty2zty :: (Type,Attributes) → ZType
 	ty2zty (ty,attrs) = case ty of
@@ -230,7 +232,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 		CLabel ident stmt _ _ → Label (cident2ident ident) loc : stmt2ast γ ret_ty stmt
 
 		CIf expr then_stmt mb_else_stmt _ →
-			[ IfThenElse (expr2ast γ (Just intTy) expr) (mb_compound_stmts $ stmt2ast γ ret_ty then_stmt) else_stmt loc ]
+			[ IfThenElse (expr2ast γ (Just cboolTy) expr) (mb_compound_stmts $ stmt2ast γ ret_ty then_stmt) else_stmt loc ]
 			where
 			else_stmt = case mb_else_stmt of
 				Nothing     → emptyStmt
@@ -241,10 +243,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 			Nothing   → []
 
 		CWhile cond body is_dowhile ni → [ (if is_dowhile then DoWhile else While)
-			(expr2ast γ (Just intTy) cond) (mb_break_compound $ stmt2ast γ ret_ty body) loc ]
+			(expr2ast γ (Just cboolTy) cond) (mb_break_compound $ stmt2ast γ ret_ty body) loc ]
 
 		CFor mb_expr_or_decl (Just cond) mb_inc body ni →
-			[ mb_compound_stmts $ inis ++ [ For (expr2ast γ' (Just intTy) cond) inc (mb_break_compound $ stmt2ast γ' ret_ty body) loc ] ]
+			[ mb_compound_stmts $ inis ++ [ For (expr2ast γ' (Just cboolTy) cond) inc (mb_break_compound $ stmt2ast γ' ret_ty body) loc ] ]
 			where
 			(γ',inis) = case mb_expr_or_decl of
 				Left (Just ini_expr) → ( γ, [ ExprStmt (expr2ast γ Nothing ini_expr) (ni2loc ini_expr) ] )
@@ -331,9 +333,9 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 							(CShlAssOp,Shl),(CShrAssOp,Shr),(CAndAssOp,BitAnd),(CXorAssOp,BitXOr),(COrAssOp,BitOr) ]
 
 			CCond cond (Just then_expr) else_expr _ →
-				CondExpr (expr2ast γ (Just intTy) cond) (mb_cast max_ty then_expr') (mb_cast max_ty else_expr') max_ty loc
+				CondExpr (expr2ast γ (Just cboolTy) cond) (mb_cast max_ty then_expr') (mb_cast max_ty else_expr') max_ty loc
 				where
-				cond'      = expr2ast γ (Just intTy) cond
+				cond'      = expr2ast γ (Just cboolTy) cond
 				then_expr' = expr2ast γ Nothing then_expr
 				else_expr' = expr2ast γ Nothing else_expr
 				max_ty     = max (typeE then_expr') (typeE else_expr')
@@ -349,10 +351,10 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 				expr1' = expr2ast γ Nothing expr1
 				expr2' = expr2ast γ Nothing expr2
 				max_ty = max (typeE expr1') (typeE expr2')
-				(res_ty,arg_ty) = case op of
+				(res_ty,arg_ty) = case binop of
 					op | op `elem` [Mul,Div,Add,Sub,Rmd,Shl,Shr,BitAnd,BitOr,BitXOr] → (max_ty,max_ty)
-					op | op `elem` [Less,Equals,NotEquals,LessEq,Greater,GreaterEq]  → (intTy, max_ty)
-					op | op `elem` [And,Or]                                          → (intTy, intTy )
+					op | op `elem` [Less,Equals,NotEquals,LessEq,Greater,GreaterEq]  → (cboolTy, max_ty)
+					op | op `elem` [And,Or]                                          → (cboolTy, cboolTy )
 					other -> error $ "infer_expr " ++ show other ++ " not implemented"
 
 			CUnary cunop expr _ → Unary unop expr' ty loc
@@ -365,21 +367,26 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 				ty        = case unop of
 					AddrOf → ZPtr expr'_ty
 					Deref  → targettyZ expr'_ty
-					Not    → intTy
+					Not    → cboolTy
 					op | op `elem` [Plus,Minus,BitNeg,PreInc,PostInc,PreDec,PostDec]
 					       → expr'_ty
 
-------
-			CIndex arr index ni → CIndex arr index niIndex (expr2ast arr) (expr2ast index) Nothing (ni2loc ni)
+			CIndex arr index _ → Index arr' (expr2ast γ (Just indexTy) index) elem_ty loc
+				where
+				arr' = expr2ast γ Nothing arr
+				ZArray elem_ty _ = typeE arr'
 
-			CConst ctconst → CConst ctconstConstant const' (Just ty) (ni2loc ni) where
-				(const',ty,ni) = case ctconst of
-					CIntConst cinteger@(CInteger _ _ flags) ni → (IntConst (getCInteger cinteger),(integral $ getIntType flags,[]),ni)
-					CCharConst cchar ni       → (CharConst (read $ getCChar cchar),(integral TyChar,[]),ni)
-					CFloatConst (CFloat f) ni → (FloatConst (read f),(floating $ getFloatType f,[]),ni)
-					CStrConst cstring ni      → (StringConst $ (getCString cstring),(PtrType (integral TyChar) noTypeQuals noAttributes,[]),ni)
+			CConst ctconst → Constant const (ty2zty ty) loc
+				where
+				(const,ty) = case ctconst of
+					CIntConst ci@(CInteger _ _ flags) _ → ( IntConst (getCInteger ci), integral $ getIntType flags )
+					CCharConst cchar _       → ( CharConst (read $ getCChar cchar),(integral TyChar,[] )
+					CFloatConst (CFloat f) _ → ( FloatConst (read f),(floating $ getFloatType f,[] )
+					CStrConst cstring _      → ( StringConst $ (getCString cstring), PtrType (integral TyChar) noTypeQuals noAttributes )
 
-			CMember expr ident is_ptr ni → CMember expr ident is_ptr niMember (expr2ast expr) (cident2ident ident) is_ptr Nothing (ni2loc ni)
+			CMember expr ident is_ptr ni → Member expr' ident' isptr member_ty loc
+				where
+				expr' = expr2ast γ Nothing
 
 			CVar ident ni → CVar ident niVar (cident2ident ident) Nothing (ni2loc ni)
 
@@ -387,6 +394,26 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 
 			other → error $ "expr2ast " ++ show other ++ " not implemented"
 {-
+			Index arr ix Nothing loc → Index arr' (τ_e intTy ix) elemty loc where
+				arr' = τ arr
+				ZArray elemty _ = typeE arr'
+
+			Member expr member_ident isptr Nothing loc → Member expr' member_ident isptr ty loc
+				where
+				expr' = τ expr
+				ty = lookupVarDeclsTy member_ident $ case (isptr,typeE expr') of
+					(True ,ZPtr (ZCompound _ _ elemtys)) → elemtys
+					(False,     (ZCompound _ _ elemtys)) → elemtys
+
+			Var ident Nothing loc → Var ident ty loc
+				where
+				ty = case lookup ident (concat tyenvs) of
+					Just t -> t
+					Nothing -> error $ "lookup " ++ show ident ++ " not found in\n" ++ showTyEnv (concat tyenvs)
+
+			Comp elems (Just ty) loc → Comp (map τ elems) (ty2zty ty) loc
+
+			other → error $ "infer_expr " ++ show other ++ " not implemented"
 
 	identdecl2extdecl :: IdentDecl → ExtDecl TypeAttrs
 	identdecl2extdecl identdecl = ExtDecl (decl2vardecl ni identdecl) body (ni2loc ni)
