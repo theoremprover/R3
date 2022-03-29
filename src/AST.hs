@@ -131,10 +131,11 @@ data Expr =
 	Comp     { elemsE :: [Expr], typeE   :: ZType,        locE   :: Loc                             }
 	deriving (Show,Generic,Data,Typeable)
 instance Pretty Expr where
-	pretty (Assign lexpr expr ty _)          = pretty lexpr <+> colon <> colon <+> pretty ty <+> equals <+> pretty expr
+	pretty (Assign lexpr expr ty _)          = pretty lexpr <+> equals <+> pretty expr
 	pretty (Cast expr ty _)                  = parens $ parens (pretty ty) <> pretty expr
 	pretty (Call fun args _ _)               = pretty fun <> parens (hsep $ punctuate comma $ map pretty args)
-	pretty (Unary op expr _ _) | op `elem` [PostInc,PostDec] = pretty expr <> pretty op
+	pretty (Unary op expr _ _) | op `elem` [PostInc,PostDec]
+		                                     = pretty expr <> pretty op
 	pretty (Unary op expr _ _)               = pretty op <> pretty expr 
 	pretty (Binary op expr1 expr2 _ _)       = parens $ pretty expr1 <+> pretty op <+> pretty expr2
 	pretty (CondExpr cond then_e else_e _ _) = parens $ pretty cond <+> pretty "?" <+> pretty then_e <+> colon <+> pretty else_e
@@ -200,9 +201,7 @@ data Stmt =
 	Compound   { catchBrkS :: Bool,             stmtsS    :: [Stmt], locS      :: Loc } |
 	IfThenElse { condS     :: Expr,             thenstmtS :: Stmt,   elsestmtS :: Stmt, locS :: Loc } |
 	ExprStmt   { exprS     :: Expr,             locS      :: Loc } |
-	While      { condS     :: Expr,             bodyS     :: Stmt,   locS      :: Loc } |
-	DoWhile    { condS     :: Expr,             bodyS     :: Stmt,   locS      :: Loc } |
-	For        { condS     :: Expr,             incS      :: Stmt,   bodyS   :: Stmt,   locS :: Loc } |
+	While      { isDoWhile :: Bool,             condS     :: Expr,             bodyS     :: Stmt,   locS      :: Loc } |
 	Switch     { condS     :: Expr,             bodyS     :: Stmt,   locS      :: Loc } |
 	Case       { condS     :: Expr,             locS      :: Loc } |
 	Cases      { loCondS   :: Expr,             hiCondS   :: Expr,   locS      :: Loc } |
@@ -223,15 +222,8 @@ instance Pretty Stmt where
 		mb_singleline comp doc = case comp of
 			Compound _ _ _ → doc
 			_              → nest 4 doc
-	pretty (While cond body loc) = vcat [ pretty "while" <> parens (pretty cond) <+> locComment loc, pretty body ]
-	pretty (DoWhile cond body loc) = vcat [ pretty "do" <+> locComment loc, pretty body, pretty "while" <> parens (pretty cond) ]
-	pretty (For cond inc body loc) = vcat [ pretty "for" <> parens (
-		hcat $ punctuate semi [
-			emptyDoc,
-			pretty cond,
-			pretty inc ]
-			) <+> locComment loc,
-		pretty body ]
+	pretty (While False cond body loc) = vcat [ pretty "while" <> parens (pretty cond) <+> locComment loc, pretty body ]
+	pretty (While True cond body loc) = vcat [ pretty "do" <+> locComment loc, pretty body, pretty "while" <> parens (pretty cond) ]
 	pretty (Switch val body loc) = vcat [ pretty "switch" <> parens (pretty val) <+> locComment loc, pretty body ]
 	pretty (Case cond loc) = pretty "case" <+> pretty cond <+> pretty ":" <+> locComment loc
 	pretty (Default loc) = pretty "default" <> pretty ":" <+> locComment loc
