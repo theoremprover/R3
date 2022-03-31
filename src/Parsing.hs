@@ -282,7 +282,7 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 
 		loc = ni2loc cstat
 
-		-- makes a compound breakable
+		-- makes a breakable compound
 		mb_break_compound :: [Stmt] -> Stmt
 		mb_break_compound [Compound _ stmts loc] = Compound True stmts loc
 		mb_break_compound stmts = Compound True stmts introLoc

@@ -92,10 +92,6 @@ lookupExtDef name translunit = head $ filter ((==name).nameIdent.identVD.varDecl
 
 data ExtDecl = ExtDecl {
 	varDeclED :: VarDeclaration,
-	-- AST contains variable declarations, each of them having either
-	-- 1. maybe an initializer (i.e. a variable declaration), or
-	-- 2. a statement as body of the defined function
-	--    (the arguments and their types are in the type of the function identifier)
 	bodyED    :: Either (Maybe Expr) FunDef,
 	locED     :: Loc }
 	deriving (Show,Generic,Data,Typeable)
