@@ -15,6 +15,7 @@ import Control.Monad
 import AST
 import R3Monad
 import Prettyprinter
+import MachineSpec
 
 {-
 	AST transformations:
@@ -62,27 +63,28 @@ int** pp = &p;
 -}
 
 transformAST :: TranslUnit → R3 TranslUnit
-transformAST ast = return ast --elimConstructs ast >>= elimSideEffects
+transformAST ast = do
+	machinespec <- gets machineSpecR3
+	elimConstructs machinespec ast
 
-newIdent :: String -> R3 Ident
+newIdent :: String → R3 Ident
 newIdent prefix = do
 	i <- getNewNameCnt 
 	return $ Ident (prefix ++ "$" ++ show i) i introLoc
 
-{-
-elimConstructs :: TranslUnit → R3 TranslUnit
-elimConstructs ast = transformBiM rules ast
+elimConstructs :: MachineSpec → TranslUnit → R3 TranslUnit
+elimConstructs MachineSpec{..} ast = do
+	transformBiM rules ast
+
 	where
 
-  	rules :: Stmt -> R3 Stmt
+ 	cboolTy :: ZType
+	cboolTy = ZInt intSize False
 
-  	-- The body compound under While catches break by default,
-  	-- and also breaks the "Compound True [body ..." compound, because it is the last compound in the whole compound
-	rules (DoWhile cond body loc) = return $ Compound True [body,While cond body loc] loc
+	indexTy :: ZType
+	indexTy = ZInt intSize True
 
-	rules (For cond inc body loc) = do
-		let body' = Compound True [body,inc] (locS body)
-		return $ While cond body' loc
+ 	rules :: Stmt -> R3 Stmt
 
 {-
 switch(expr)
@@ -117,33 +119,30 @@ else
 	e;
 }
 -}
-
-	rules (Switch switchval (Compound True bodystmts bodyloc) loc) = do
-		newident <- newIdent "switch_val"
-		let switchvar = Var newident (typeE switchval) introLoc
-		return $ Compound True [
-			switchvar ≔ switchval,
-			switchbody switchvar bodystmts
-			] bodyloc
-
-		where
-
-		switchbody switchvar (Case val loc : stmts) =
-			𝗂𝖿 (val ≟ switchvar)
-				(Compound False (till_break (body:stmts)) introLoc)
-				(switchbody switchvar (skip_till_case stmts))
-		switchbody _ (Default stmt _ : stmts) = Compound False (till_break (stmt:stmts)) introLoc
-
-		till_break [] = []
-		till_break (Break _ : _) = []
-		till_break (stmt : stmts) = stmt : till_break stmts
-
-		skip_till_case [] = []
-		skip_till_case stmts@(Case _ _ _ : _) = stmts
-		skip_till_case (_ : stmts) = skip_till_case stmts
+  	rules Switch{..} = do
+  		val_ident <- newIdent "switch_val"
+  		let
+  			val_ty = typeE condS
+  			val_var = Var val_ident val_ty introLoc
+  			Compound _ stmts loc = bodyS
+  		return $ Compound True [
+			val_ident ∶∶ val_ty,
+			val_var ≔ condS,
+  			search_cases val_var stmts ] loc
+  		where
+		search_cases val_var [] = emptyStmt
+		search_cases val_var (Default _ : stmts) = Compound False stmts introLoc
+		search_cases val_var (Case {..} : stmts) = 𝗂𝖿 cond cases_filtered_out till_case where
+			cond = Binary Equals val_var condS cboolTy locS
+			isnocase (Case _ _) = False
+			isnocase _ = True
+			cases_filtered_out = Compound False (filter isnocase stmts) introLoc
+			till_case = search_cases val_var (dropWhile isnocase stmts)
+		search_cases val_var (_ : stmts) = search_cases val_var stmts
 
 	rules other = return other
 
+{-
 elimSideEffects :: TranslUnit → R3 TranslUnit
 elimSideEffects ast = do
 	liftIO $ mapM_ print [ show loc ++ " : " ++ show (pretty stm) |

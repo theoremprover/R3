@@ -228,9 +228,6 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 		Left errs    → error $ show errs
 		Right (ty,_) → ty
 
-	emptyStmt :: Stmt
-	emptyStmt = Compound False [] introLoc
-
 	stmt2ast :: TyEnv → ZType → CStat → [Stmt]
 	stmt2ast γ ret_ty cstat = case cstat of
 
@@ -266,15 +263,16 @@ globDecls2AST MachineSpec{..} deftable GlobalDecls{..} =
 
 		CCont _ → [ Continue loc ]
 
-		CBreak _ → [ Break loc ]
+		CReturn mb_expr _ → [ Return (fmap (expr2ast γ (Just ret_ty)) mb_expr) loc ]
 
 		CDefault cstmt _ → Default loc : stmt2ast γ ret_ty cstmt
 
-		CReturn mb_expr _ → [ Return (fmap (expr2ast γ (Just ret_ty)) mb_expr) loc ]
-
-		CSwitch expr body _ → [ Switch (expr2ast γ Nothing expr) (mb_break_compound $ stmt2ast γ ret_ty body) loc ]
-
 		CCase expr stmt _ → Case (expr2ast γ Nothing expr) loc : stmt2ast γ ret_ty stmt
+
+		CSwitch expr body _ → [ Switch (expr2ast γ Nothing expr)
+			(mb_break_compound $ stmt2ast γ ret_ty body) loc ]
+
+		CBreak _ → [ Break loc ]
 
 		other → error $ "stmt2ast " ++ show other ++ " not implemented"
 

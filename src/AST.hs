@@ -201,9 +201,9 @@ data Stmt =
 	Switch     { condS     :: Expr,             bodyS     :: Stmt,   locS      :: Loc } |
 	Case       { condS     :: Expr,             locS      :: Loc } |
 	Cases      { loCondS   :: Expr,             hiCondS   :: Expr,   locS      :: Loc } |
+	Default    { locS      :: Loc } |
 	Return     { mbexprS   :: Maybe (Expr),     locS      :: Loc } |
 	Continue   { locS      :: Loc } |
-	Default    { locS      :: Loc } |
 	Break      { locS      :: Loc } |
 	Goto       { identS    :: Ident,            locS      :: Loc }
 	deriving (Show,Generic,Data,Typeable)
@@ -237,6 +237,10 @@ instance Pretty Stmt where
 
 locComment loc = column $ \ col → (pretty $ take (120 - col) (repeat ' ') ++ "// ----------") <+> pretty loc
 
+emptyStmt :: Stmt
+emptyStmt = Compound False [] introLoc
+
+
 ------ 𝖺𝖻𝖼𝖽𝖾𝖿𝗀𝗁𝗂𝗃𝗄𝗅𝗆𝗇𝗈𝗉𝗊𝗋𝗌𝗍𝗎𝗏𝗐𝗑𝗒𝗓
 
 infixr 2 ≔
@@ -246,6 +250,6 @@ a ≔ b = ExprStmt (Assign a b (typeE a) (locE a)) (locE a)
 𝗂𝖿 :: Expr -> Stmt -> Stmt -> Stmt
 𝗂𝖿 cond then_stmt else_stmt = IfThenElse cond then_stmt else_stmt introLoc
 
-infix 4 ≟
-(≟) :: Expr -> Expr -> Expr
-a ≟ b = Binary Equals a b ZBool (locE a)
+infixr 2 ∶∶
+(∶∶) :: Ident -> ZType -> Stmt
+ident ∶∶ ty = Decl (VarDeclaration ident "<none>" ty introLoc) introLoc
