@@ -132,7 +132,7 @@ instance Pretty Expr where
 	pretty (Call fun args _ _)               = pretty fun <> parens (hsep $ punctuate comma $ map pretty args)
 	pretty (Unary op expr _ _) | op `elem` [PostInc,PostDec]
 		                                     = pretty expr <> pretty op
-	pretty (Unary op expr _ _)               = pretty op <> pretty expr 
+	pretty (Unary op expr _ _)               = pretty op <> pretty expr
 	pretty (Binary op expr1 expr2 _ _)       = parens $ pretty expr1 <+> pretty op <+> pretty expr2
 	pretty (CondExpr cond then_e else_e _ _) = parens $ pretty cond <+> pretty "?" <+> pretty then_e <+> colon <+> pretty else_e
 	pretty (Index expr ix _ _)               = pretty expr <> brackets (pretty ix)

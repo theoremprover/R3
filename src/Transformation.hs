@@ -65,7 +65,7 @@ int** pp = &p;
 transformAST :: TranslUnit → R3 TranslUnit
 transformAST ast = do
 	machinespec <- gets machineSpecR3
-	elimConstructs machinespec ast
+	elimConstructs machinespec ast >>= elimSideEffects machinespec
 
 newIdent :: String → R3 Ident
 newIdent prefix = do
@@ -73,9 +73,7 @@ newIdent prefix = do
 	return $ Ident (prefix ++ "$" ++ show i) i introLoc
 
 elimConstructs :: MachineSpec → TranslUnit → R3 TranslUnit
-elimConstructs MachineSpec{..} ast = do
-	transformBiM rules ast
-
+elimConstructs MachineSpec{..} ast = transformBiM stmt_rules ast
 	where
 
  	cboolTy :: ZType
@@ -84,42 +82,9 @@ elimConstructs MachineSpec{..} ast = do
 	indexTy :: ZType
 	indexTy = ZInt intSize True
 
- 	rules :: Stmt -> R3 Stmt
+ 	stmt_rules :: Stmt -> R3 Stmt
 
-{-
-switch(expr)
-{
-	case c1 : a;
-	          b;
-	case c2 : c;
-	          break;
-	case c3 : d;
-	default:  e;
-}
-
-~>
-
-switch_val = expr;
-if(switch_val==c1)
-{
-	a;
-	b;
-	c;
-}
-else if(switch_val==c2)
-{
-	c;
-}
-else if(switch_val==c3)
-{
-	d;
-}
-else
-{
-	e;
-}
--}
-  	rules Switch{..} = do
+  	stmt_rules Switch{..} = do
   		val_ident <- newIdent "switch_val"
   		let
   			val_ty = typeE condS
@@ -135,23 +100,23 @@ else
 		search_cases val_var (Case {..} : stmts) = 𝗂𝖿 cond cases_filtered_out till_case where
 			cond = Binary Equals val_var condS cboolTy locS
 			isnocase (Case _ _) = False
-			isnocase _ = True
+			isnocase _          = True
 			cases_filtered_out = Compound False (filter isnocase stmts) introLoc
 			till_case = search_cases val_var (dropWhile isnocase stmts)
 		search_cases val_var (_ : stmts) = search_cases val_var stmts
 
-	rules other = return other
+	stmt_rules other = return other
 
-{-
-elimSideEffects :: TranslUnit → R3 TranslUnit
-elimSideEffects ast = do
+elimSideEffects :: MachineSpec → TranslUnit → R3 TranslUnit
+elimSideEffects MachineSpec{..} ast = do
 	liftIO $ mapM_ print [ show loc ++ " : " ++ show (pretty stm) |
 		Compound _ stmts _ <- universeBi ast,
 		stm@(ExprStmt expr loc) <- stmts,
-		Unary op _ _ _ :: Expr ZType <- children expr ]
+		Unary op _ _ _ :: Expr <- children expr ]
 --		op `elem` [PreInc,PostInc,PreDec,PostDec] ]
 	return ast
--}
+--	ast' <- transformBiM expr_rules ast
+
 
 {-
 asta = C [ExpStm (V 1), C [ExpStm (I (V 9)),ExpStm (V 3)]]
