@@ -114,17 +114,17 @@ instance Pretty FunDef where
 	pretty (FunDef argdecls body) = vcat [ parens (hsep $ punctuate comma $ map pretty argdecls), pretty body ]
 
 data Expr =
-	Assign   { lexprE :: Expr,   exprE   :: Expr,   typeE  :: ZType,      locE  :: Loc            } |
-	Cast     { exprE  :: Expr,   typeE   :: ZType,  locE   :: Loc                             } |
-	Call     { exprE  :: Expr,   argsE   :: [Expr], typeE  :: ZType,      locE  :: Loc            } |
-	Unary    { unopE  :: UnaryOp,  exprE   :: Expr,   typeE  :: ZType,      locE  :: Loc            } |
-	Binary   { binopE :: BinaryOp, expr1E  :: Expr,   expr2E :: Expr, typeE :: ZType, locE :: Loc } |
-	CondExpr { condE  :: Expr,   thenE   :: Expr,   elseE  :: Expr, typeE :: ZType, locE :: Loc } |
-	Index    { exprE  :: Expr,   indexE  :: Expr,   typeE  :: ZType,      locE  :: Loc            } |
-	Member   { exprE  :: Expr,   memberE :: Ident,    isptrE :: Bool,   typeE :: ZType, locE :: Loc } |
-	Var      { identE :: Ident,    typeE   :: ZType,        locE   :: Loc                             } |
-	Constant { constE :: Const,    typeE   :: ZType,        locE   :: Loc                             } |
-	Comp     { elemsE :: [Expr], typeE   :: ZType,        locE   :: Loc                             }
+	Assign   { lexprE :: Expr,     exprE   :: Expr,   typeE  :: ZType, locE  :: Loc                } |
+	Cast     { exprE  :: Expr,     typeE   :: ZType,  locE   :: Loc                                } |
+	Call     { exprE  :: Expr,     argsE   :: [Expr], typeE  :: ZType, locE  :: Loc                } |
+	Unary    { unopE  :: UnaryOp,  exprE   :: Expr,   typeE  :: ZType, locE  :: Loc                } |
+	Binary   { binopE :: BinaryOp, expr1E  :: Expr,   expr2E :: Expr,  typeE :: ZType, locE :: Loc } |
+	CondExpr { condE  :: Expr,     thenE   :: Expr,   elseE  :: Expr,  typeE :: ZType, locE :: Loc } |
+	Index    { exprE  :: Expr,     indexE  :: Expr,   typeE  :: ZType, locE  :: Loc                } |
+	Member   { exprE  :: Expr,     memberE :: Ident,  isptrE :: Bool,  typeE :: ZType, locE :: Loc } |
+	Var      { identE :: Ident,    typeE   :: ZType,  locE   :: Loc                                } |
+	Constant { constE :: Const,    typeE   :: ZType,  locE   :: Loc                                } |
+	Comp     { elemsE :: [Expr],   typeE   :: ZType,  locE   :: Loc                                }
 	deriving (Show,Generic,Data,Typeable)
 instance Pretty Expr where
 	pretty (Assign lexpr expr ty _)          = pretty lexpr <+> equals <+> pretty expr
