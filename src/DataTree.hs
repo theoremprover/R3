@@ -125,14 +125,14 @@ ul, #myUL {
 }
 
 .caret::before {
- content: "229E";
+ content: "\229E";
  color: #808080;
  display: inline-block;
  margin-right: 6px;
 }
 
 .caret-down::before {
- content: "229F";
+ content: "\229F";
  color: #808080;
 }
 
@@ -142,7 +142,7 @@ ul, #myUL {
 }
 
 .leaf::before {
- content: "22A1";
+ content: "\22A1";
  visibility: hidden;
  color: #808080;
  display: inline-block;
@@ -150,7 +150,7 @@ ul, #myUL {
 }
 
 .leaf-down::before {
- content: "22A1";
+ content: "\22A1";
  visibility: hidden;
  color: #808080;
 }

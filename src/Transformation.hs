@@ -64,7 +64,7 @@ int** pp = &p;
 
 transformAST :: TranslUnit → R3 TranslUnit
 transformAST ast = return ast >>=
-	elimConstructs >>= splitSequencePoints >>= elimSideEffects
+	elimConstructs >>= {- splitSequencePoints >>= -} elimSideEffects
 
 newIdent :: String → R3 Ident
 newIdent prefix = do
@@ -104,15 +104,19 @@ elimConstructs ast = transformBiM stmt_rules ast
 
 	stmt_rules other = return other
 
+{-
 splitSequencePoints :: TranslUnit → R3 TranslUnit
 splitSequencePoints ast = transformBiM split_rules ast
 	where
+
 	split_rules :: Stmt -> R3 Stmt
 	split_rules stmt = do
 		(stmt',assigns) <- runStateT (transformBiM replace_rules stmt) []
 		return $ Compound False (stmt':assigns) introLoc
-	replace_rules :: Expr -> R3 Expr
 
+	replace_rules :: Expr -> StateT [Stmt] R3 Expr
+	replace_rules (Binary lazyop expr1 expr2 _ _) | lazyop `elem` [And,Or] = do
+-}
 
 elimSideEffects :: TranslUnit → R3 TranslUnit
 elimSideEffects ast = transformBiM elim_rules ast
